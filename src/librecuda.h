@@ -5,13 +5,17 @@
 
 #define LIBRECUDA_EXPORT extern "C"
 
-
 struct LibreCUdevice_;
-
 struct LibreCUcontext_;
+struct LibreCUmodule_;
 
 typedef LibreCUdevice_ *LibreCUdevice;
 typedef LibreCUcontext_ *LibreCUcontext;
+typedef LibreCUmodule_ *LibreCUmodule;
+
+#define CU_CTX_SCHED_SPIN 0x01
+#define CU_CTX_SCHED_YIELD 0x02
+#define CU_CTX_SCHED_BLOCKING_SYNC 0x04
 
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuInit(int flags);
 
@@ -29,6 +33,10 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuCtxSetCurrent(LibreCUcontext ctx);
 
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuMemAlloc(void **pDevicePointer, size_t bytesize);
 
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount);
+
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuMemFree(void *devicePointer);
+
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *image, size_t imageSize);
 
 #endif //LIBRECUDA_H_

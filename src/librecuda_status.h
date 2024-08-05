@@ -20,4 +20,6 @@ typedef int libreCudaStatus_t;
 #define LIBRECUDA_SUCCEED() { return LIBRECUDA_SUCCESS; }
 #define LIBRECUDA_FAIL(status) { return status; }
 
+#define LIBRECUDA_ERR_PROPAGATE(status) { libreCudaStatus_t status_val = status; if (status_val != LIBRECUDA_SUCCESS) { LIBRECUDA_FAIL(status_val); } }
+
 #endif //LIBRECUDA_VALIDATE_H

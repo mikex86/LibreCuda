@@ -1,6 +1,10 @@
-#include "librecuda"
+#include "librecuda.h"
 
 #include <iostream>
+#include <cstdint>
+#include <vector>
+#include <fstream>
+#include <cstring>
 
 inline void cudaCheck(libreCudaStatus_t error, const char *file, int line) {
     if (error != LIBRECUDA_SUCCESS) {
@@ -23,12 +27,38 @@ int main() {
     CUDA_CHECK(libreCuDeviceGet(&device, 0));
 
     LibreCUcontext ctx{};
-    CUDA_CHECK(libreCuCtxCreate_v2(&ctx, 0, device));
+    CUDA_CHECK(libreCuCtxCreate_v2(&ctx, CU_CTX_SCHED_YIELD, device));
+
+    LibreCUmodule module{};
+
+    // read cubin file
+    uint8_t *image;
+    size_t n_bytes;
+    {
+        std::ifstream input("complex.cubin", std::ios::binary);
+        std::vector<uint8_t> bytes(
+                (std::istreambuf_iterator<char>(input)),
+                (std::istreambuf_iterator<char>()));
+        input.close();
+        image = new uint8_t[bytes.size()];
+        memcpy(image, bytes.data(), bytes.size());
+        n_bytes = bytes.size();
+    }
+    CUDA_CHECK(libreCuModuleLoadData(&module, image, n_bytes));
 
     void *device_ptr{};
     CUDA_CHECK(libreCuMemAlloc(&device_ptr, 1024 * sizeof(float)));
 
+    float data[] = {
+            1.0f,
+            2.0f,
+            3.0f,
+            4.0f,
+            5.0f
+    };
+
     std::cout << "Virtual address ptr: " << device_ptr << std::endl;
+    CUDA_CHECK(libreCuMemCpy(device_ptr, device_ptr, sizeof(data)));
 
     CUDA_CHECK(libreCuMemFree(device_ptr));
 
