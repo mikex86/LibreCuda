@@ -40,7 +40,7 @@ struct CommandQueuePage {
      * Pointer into commandQueuePage. Commands are mem-copied in appending fashion into the command queue page and
      * commandWritePtr is used to keep track of the current offset from the base pointer.
      */
-    uint64_t commandWritePtr = 0;
+    uint64_t commandWriteIdx = 0;
 
 };
 
@@ -103,6 +103,17 @@ private:
      */
     NvU32 timelineCtr = 0;
 
+    /**
+     * Virtual address of shader local memory used for shaders/kernels.
+     * Only needs one instance > max required local memory of any kernels, as only one kernels can run at a time
+     */
+    void *shaderLocalMemoryVa = nullptr;
+
+    /**
+     * Current shader local memory per thread. NOT equal to the allocated size of localMemoryVa, but correlates.
+     */
+    size_t currentSlmPerThread = 0;
+
 public:
     explicit NvCommandQueue(LibreCUcontext ctx);
 
@@ -120,6 +131,8 @@ public:
     libreCudaStatus_t awaitExecution();
 
     ~NvCommandQueue();
+
+    libreCudaStatus_t ensureEnoughLocalMem(NvU32 localMemReq);
 
 private:
 

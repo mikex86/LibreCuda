@@ -1,7 +1,6 @@
 #include "cmdqueue.h"
 
 #include <algorithm>
-#include <mutex>
 #include <thread>
 #include <cstring>
 
@@ -44,20 +43,23 @@ libreCudaStatus_t NvCommandQueue::submitToFifo(GPFifo &gpfifo, CommandQueuePage 
         return LIBRECUDA_SUCCESS; // don't do anything when command buffer is emtpy
     }
 
-    if ((page.commandWritePtr + (commandBuffer.size() * sizeof(NvU32))) > (MAX_CMD_QUEUE_PAGE_SIZE * sizeof(NvU32))) {
+    if ((page.commandWriteIdx + commandBuffer.size()) > MAX_CMD_QUEUE_PAGE_SIZE) {
         LIBRECUDA_VALIDATE(NvU64(gpfifo.ring[gpfifo.controls->GPGet] & 0xFFFFFFFFFC) >=
                            NvU64(page.commandQueueSpace + commandBuffer.size()) ||
                            gpfifo.controls->GPGet == gpfifo.controls->GPPut, LIBRECUDA_ERROR_UNKNOWN);
-        page.commandWritePtr = 0;
+        page.commandWriteIdx = 0;
     }
-    memcpy(page.commandQueueSpace + page.commandWritePtr, commandBuffer.data(), commandBuffer.size() * sizeof(NvU32));
-    page.commandWritePtr += commandBuffer.size();
+    memcpy(page.commandQueueSpace + page.commandWriteIdx, commandBuffer.data(), commandBuffer.size() * sizeof(NvU32));
 
     gpfifo.ring[gpfifo.put_value % gpfifo.entries_count] =
-            ((NvU64(page.commandQueueSpace) / sizeof(NvU32)) << 2) | (commandBuffer.size() << 42) | (1l << 41);
+            ((NvU64(page.commandQueueSpace + page.commandWriteIdx) / sizeof(NvU32)) << 2) |
+            (commandBuffer.size() << 42) | (1l << 41);
+    page.commandWriteIdx += commandBuffer.size();
+
     gpfifo.controls->GPPut = (gpfifo.put_value + 1) % gpfifo.entries_count;
     ctx->device->gpu_mmio[0x90 / 4] = gpfifo.token;
     gpfifo.put_value++;
+
     commandBuffer.clear();
 
     LIBRECUDA_SUCCEED();
@@ -137,6 +139,7 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
 
     LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
     LIBRECUDA_ERR_PROPAGATE(awaitExecution());
+
 
     initialized = true;
 
@@ -235,7 +238,7 @@ libreCudaStatus_t NvCommandQueue::signalNotify(NvSignal *pSignal, NvU32 signalTa
                             signalTarget,
                             0,
 
-                            (NVC56F_SEM_EXECUTE_OPERATION_RELEASE) | (NVC56F_SEMAPHORED_RELEASE_WFI_EN << 20) |
+                            (NVC56F_SEM_EXECUTE_OPERATION_RELEASE) | (NVC56F_SEMAPHORED_RELEASE_WFI_DIS << 20) |
                             (NVC56F_SEM_EXECUTE_PAYLOAD_SIZE_64BIT << 24) |
                             (NVC56F_SEM_EXECUTE_RELEASE_TIMESTAMP_EN
                                     << 25)
@@ -306,6 +309,68 @@ libreCudaStatus_t NvCommandQueue::startExecution(QueueType queueType) {
             queueType == COMPUTE ? ctx->compute_gpfifo : ctx->dma_gpfifo,
             queueType == COMPUTE ? computeQueuePage : dmaQueuePage
     ));
+    LIBRECUDA_SUCCEED();
+}
+
+
+static inline NvU64 ceilDiv(NvU64 a, NvU64 b) {
+    return (a + b - 1) / b;
+}
+
+
+libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
+    if (localMemReq <= currentSlmPerThread) {
+        return LIBRECUDA_SUCCESS; // no action required, local memory is enough
+    }
+
+    if (shaderLocalMemoryVa != nullptr) {
+        LIBRECUDA_ERR_PROPAGATE(gpuFree(ctx, reinterpret_cast<NvU64>(shaderLocalMemoryVa)));
+    }
+
+    currentSlmPerThread = ceilDiv(localMemReq, 32) * 32; // round up
+    NvU64 bytes_per_warp = ceilDiv(currentSlmPerThread * 32, 0x200) * 0x200; // round up
+    NvU64 bytes_per_tpc = ceilDiv(bytes_per_warp * 48 * 2, 0x8000) * 0x8000; // round up
+
+    size_t nSlmBytes = ceilDiv(bytes_per_tpc * 64, 0x20000) * 0x20000; // round up
+    LIBRECUDA_ERR_PROPAGATE(
+            gpuAlloc(
+                    ctx,
+                    nSlmBytes,
+                    true,
+                    true,
+                    false,
+                    0,
+                    reinterpret_cast<NvU64 *>(&shaderLocalMemoryVa)
+            )
+    );
+
+    {
+        // set shader local memory pointer
+        LIBRECUDA_ERR_PROPAGATE(enqueue(
+                makeNvMethod(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_A, 2),
+                {
+                        // weird half big and little endian along int borders again...
+                        U64_HI_32_BITS(shaderLocalMemoryVa),
+                        U64_LO_32_BITS(shaderLocalMemoryVa)
+                }
+        ));
+        LIBRECUDA_ERR_PROPAGATE(enqueue(
+                makeNvMethod(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A, 3),
+
+                // weird half big and little endian along int borders again...
+                {
+                        U64_HI_32_BITS(bytes_per_tpc),
+                        U64_LO_32_BITS(bytes_per_tpc),
+
+                        0x40 // whatever this means...
+                }
+        ));
+        timelineCtr++;
+    }
+
+    startExecution(COMPUTE);
+    awaitExecution();
+
     LIBRECUDA_SUCCEED();
 }
 

@@ -72,7 +72,7 @@ extern "C" {
 
 // Helper macro's for 32 bit bitmasks
 #define NV_BITMASK32_ELEMENT_SIZE            (sizeof(NvU32) << 3)
-#define NV_BITMASK32_IDX(chId)               (((chId) & ~(0x1F)) >> 5)  
+#define NV_BITMASK32_IDX(chId)               (((chId) & ~(0x1F)) >> 5)
 #define NV_BITMASK32_OFFSET(chId)            ((chId) & (0x1F))
 #define NV_BITMASK32_SET(pChannelMask, chId) \
         (pChannelMask)[NV_BITMASK32_IDX(chId)] |= NVBIT(NV_BITMASK32_OFFSET(chId))
@@ -763,11 +763,11 @@ nvPrevPow2_U64(const NvU64 x )
 
 // Returns the offset (in bytes) of 'member' in struct 'type'.
 #ifndef NV_OFFSETOF
-    #if defined(__GNUC__) && (__GNUC__ > 3)
-        #define NV_OFFSETOF(type, member)   ((NvU32)__builtin_offsetof(type, member))
-    #else
-        #define NV_OFFSETOF(type, member)    ((NvU32)(NvU64)&(((type *)0)->member)) // shouldn't we use PtrToUlong? But will need to include windows header.
-    #endif
+#if defined(__GNUC__) && (__GNUC__ > 3)
+#define NV_OFFSETOF(type, member)   ((NvU32)__builtin_offsetof(type, member))
+#else
+#define NV_OFFSETOF(type, member)    ((NvU32)(NvU64)&(((type *)0)->member)) // shouldn't we use PtrToUlong? But will need to include windows header.
+#endif
 #endif
 
 //
@@ -959,4 +959,3 @@ static NV_FORCEINLINE void *NV_NVUPTR_TO_PTR(NvUPtr address)
 #endif //__cplusplus
 
 #endif // __NV_MISC_H
-

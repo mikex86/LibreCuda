@@ -2,6 +2,9 @@
 #define LIBRECUDA_LIBRECUDA_INTERNAL_H
 
 #include <sys/ioctl.h>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "nvidia/nvtypes.h"
 #include "nvidia/nvCpuUuid.h"
@@ -40,7 +43,34 @@ struct LibreCUcontext_ {
     GPFifo dma_gpfifo;
 };
 
+
+struct KernelConstantInfo {
+    NvU64 address;
+    NvU64 size;
+};
+
 struct LibreCUmodule_ {
+    /**
+     * List of all functions of the module
+     */
+    std::vector<LibreCUFunction_> functions{};
+
+    /**
+     * GPU virtual address where the elf binary was copied.
+     * This address is freed on unload.
+     */
+    NvU64 module_va_addr{};
+
+    /**
+     * numbered list of constants
+     */
+    std::unordered_map<NvU32, KernelConstantInfo> constants{};
+};
+
+struct LibreCUFunction_ {
+    std::string name;
+    NvU64 func_va_addr;
+    NvU32 shared_mem;
 };
 
 

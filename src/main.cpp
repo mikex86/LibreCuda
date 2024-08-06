@@ -46,6 +46,27 @@ int main() {
     }
     CUDA_CHECK(libreCuModuleLoadData(&module, image, n_bytes));
 
+    uint32_t num_funcs{};
+    CUDA_CHECK(libreCuModuleGetFunctionCount(&num_funcs, module));
+    std::cout << "Num functions: " << num_funcs << std::endl;
+
+    auto *functions = new LibreCUFunction[num_funcs];
+    CUDA_CHECK(libreCuModuleEnumerateFunctions(functions, num_funcs, module));
+
+    for (size_t i = 0; i < num_funcs; i++) {
+        LibreCUFunction func = functions[i];
+        const char *func_name{};
+        CUDA_CHECK(libreCuFuncGetName(&func_name, func));
+        std::cout << "  function \"" << func_name << "\"" << std::endl;
+    }
+
+    delete[] functions;
+
+    LibreCUFunction func{};
+    CUDA_CHECK(libreCuModuleGetFunction(&func, module, "matmul_kernel"));
+
+    CUDA_CHECK(libreCuModuleUnload(module));
+
     void *device_ptr{};
     CUDA_CHECK(libreCuMemAlloc(&device_ptr, 1024 * sizeof(float)));
 
@@ -57,11 +78,9 @@ int main() {
             5.0f
     };
 
-    std::cout << "Virtual address ptr: " << device_ptr << std::endl;
     CUDA_CHECK(libreCuMemCpy(device_ptr, device_ptr, sizeof(data)));
 
     CUDA_CHECK(libreCuMemFree(device_ptr));
-
     CUDA_CHECK(libreCuCtxDestroy(ctx));
     return 0;
 }
