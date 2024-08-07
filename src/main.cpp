@@ -111,23 +111,7 @@ int main() {
     // unload module
     CUDA_CHECK(libreCuModuleUnload(module));
 
-    /*
-    void *device_ptr{};
-    CUDA_CHECK(libreCuMemAlloc(&device_ptr, 1024 * sizeof(float)));
-
-    float data[] = {
-            1.0f,
-            2.0f,
-            3.0f,
-            4.0f,
-            5.0f
-    };
-
-    CUDA_CHECK(libreCuMemCpy(device_ptr, device_ptr, sizeof(data)));
-
-    CUDA_CHECK(libreCuMemFree(device_ptr));
-    */
-
+    // destroy ctx
     CUDA_CHECK(libreCuCtxDestroy(ctx));
     return 0;
 }
