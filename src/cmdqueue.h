@@ -114,6 +114,19 @@ private:
      */
     size_t currentSlmPerThread = 0;
 
+    /**
+     * GPU virtual address pointing to a page of memory used for storing the arguments to launched kernels
+     */
+    NvU8 *kernArgsPageVa;
+
+    /**
+     * Byte offset into kernArgsPageVa to bump allocate memory inside the page.
+     */
+    size_t kernArgsWriteIdx{};
+private:
+    NvU64 local_mem_window = 0xff000000;
+    NvU64 shared_mem_window = 0xfe000000;
+
 public:
     explicit NvCommandQueue(LibreCUcontext ctx);
 
@@ -134,6 +147,12 @@ public:
 
     libreCudaStatus_t ensureEnoughLocalMem(NvU32 localMemReq);
 
+    libreCudaStatus_t
+    launchFunction(LibreCUFunction function,
+                   uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
+                   uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
+                   void **params, size_t numParams);
+
 private:
 
     libreCudaStatus_t enqueue(NvMethod method, std::initializer_list<NvU32> arguments);
@@ -147,6 +166,8 @@ private:
     libreCudaStatus_t signalWait(NvSignal *pSignal, NvU32 signalTarget);
 
     libreCudaStatus_t submitToFifo(GPFifo &gpfifo, CommandQueuePage &page);
+
+    libreCudaStatus_t allocKernArgs(NvU64 *pMemOut, size_t size);
 };
 
 #endif //LIBRECUDA_CMDQUEUE_H

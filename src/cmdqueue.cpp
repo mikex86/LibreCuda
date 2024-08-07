@@ -7,15 +7,19 @@
 #include "nvidia/clc6c0.h"
 #include "nvidia/clc6b5.h"
 #include "nvidia/g_allclasses.h"
-#include "nvidia/nvos.h"
 
 #include "librecuda_internal.h"
+
+#include "nvidia/clc6c0qmd.h"
+#include "nvidia/nvmisc.h"
 
 #define ENSURE_QUEUE_INITIALIZED() LIBRECUDA_VALIDATE(initialized, LIBRECUDA_ERROR_NOT_INITIALIZED)
 
 
 #define MAX_CMD_QUEUE_PAGE_SIZE 0x200000
 #define MAX_SIGNAL_POOL_SIZE 65536
+
+#define KERNARGS_PAGE_SIZE (16 << 20)
 
 static inline NvU32 hi_32(NvU64 value) {
     return static_cast<NvV32>(value >> 32);
@@ -34,6 +38,7 @@ static NvMethod makeNvMethod(int subcommand, int method, int size, int typ) {
 }
 
 NvCommandQueue::NvCommandQueue(LibreCUcontext ctx) : ctx(ctx) {
+
 }
 
 libreCudaStatus_t NvCommandQueue::submitToFifo(GPFifo &gpfifo, CommandQueuePage &page) {
@@ -66,7 +71,6 @@ libreCudaStatus_t NvCommandQueue::submitToFifo(GPFifo &gpfifo, CommandQueuePage 
 }
 
 libreCudaStatus_t NvCommandQueue::initializeQueue() {
-
     // allocate compute command queue page
     {
         NvU64 cmdq_va{};
@@ -106,9 +110,6 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
 
     // setup compute queue
     {
-        NvU64 local_mem_window = 0xff000000;
-        NvU64 shared_mem_window = 0xfe000000;
-
         LIBRECUDA_ERR_PROPAGATE(
                 enqueue(makeNvMethod(1, NVC6C0_SET_OBJECT, 1), {ctx->device->compute_class})
         );
@@ -140,8 +141,34 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
     LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
     LIBRECUDA_ERR_PROPAGATE(awaitExecution());
 
+    // allocate kernargs page
+    {
+        LIBRECUDA_ERR_PROPAGATE(
+                gpuAlloc(
+                        ctx,
+                        KERNARGS_PAGE_SIZE,
+                        false,
+                        true,
+                        true,
+                        0,
+                        reinterpret_cast<NvU64 *>(&kernArgsPageVa)
+                )
+        )
+    }
 
     initialized = true;
+
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::allocKernArgs(NvU64 *pMemOut, size_t size) {
+    LIBRECUDA_VALIDATE(pMemOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    if ((kernArgsWriteIdx + size) > KERNARGS_PAGE_SIZE) {
+        LIBRECUDA_FAIL(LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    }
+    NvU8 *ptr = kernArgsPageVa + kernArgsWriteIdx;
+    kernArgsWriteIdx += size;
+    *pMemOut = reinterpret_cast<NvU64>(ptr);
 
     LIBRECUDA_SUCCEED();
 }
@@ -214,6 +241,7 @@ NvCommandQueue::~NvCommandQueue() {
     gpuFree(ctx, reinterpret_cast<NvU64>(signalPool));
     gpuFree(ctx, reinterpret_cast<NvU64>(computeQueuePage.commandQueueSpace));
     gpuFree(ctx, reinterpret_cast<NvU64>(dmaQueuePage.commandQueueSpace));
+    gpuFree(ctx, reinterpret_cast<NvU64>(kernArgsPageVa));
 }
 
 libreCudaStatus_t NvCommandQueue::awaitExecution() {
@@ -309,12 +337,45 @@ libreCudaStatus_t NvCommandQueue::startExecution(QueueType queueType) {
             queueType == COMPUTE ? ctx->compute_gpfifo : ctx->dma_gpfifo,
             queueType == COMPUTE ? computeQueuePage : dmaQueuePage
     ));
+
+    kernArgsWriteIdx = 0; // reset kern args write idx
     LIBRECUDA_SUCCEED();
 }
 
-
 static inline NvU64 ceilDiv(NvU64 a, NvU64 b) {
     return (a + b - 1) / b;
+}
+
+static inline int maxOf(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+static inline int ceilDiv(int a, int b) {
+    return (a + b - 1) / b;
+}
+
+static inline int roundUp(int a, int b) {
+    return ceilDiv(a, b) * b;
+}
+
+static inline NvU64 roundUp(NvU64 a, NvU64 b) {
+    return ceilDiv(a, b) * b;
+}
+
+static inline NvU32 maxOf(NvU32 a, NvU32 b) {
+    return (a > b) ? a : b;
+}
+
+static inline NvU32 minOf(NvU32 a, NvU32 b) {
+    return (a < b) ? a : b;
+}
+
+static inline NvU32 ceilDiv(NvU32 a, NvU32 b) {
+    return (a + b - 1) / b;
+}
+
+static inline NvU32 roundUp(NvU32 a, NvU32 b) {
+    return ceilDiv(a, b) * b;
 }
 
 
@@ -327,11 +388,11 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
         LIBRECUDA_ERR_PROPAGATE(gpuFree(ctx, reinterpret_cast<NvU64>(shaderLocalMemoryVa)));
     }
 
-    currentSlmPerThread = ceilDiv(localMemReq, 32) * 32; // round up
-    NvU64 bytes_per_warp = ceilDiv(currentSlmPerThread * 32, 0x200) * 0x200; // round up
-    NvU64 bytes_per_tpc = ceilDiv(bytes_per_warp * 48 * 2, 0x8000) * 0x8000; // round up
+    currentSlmPerThread = ceilDiv(localMemReq, 32u) * 32; // round up
+    NvU64 bytes_per_warp = ceilDiv(currentSlmPerThread * 32, 0x200u) * 0x200; // round up
+    NvU64 bytes_per_tpc = ceilDiv(bytes_per_warp * 48 * 2, 0x8000ul) * 0x8000; // round up
 
-    size_t nSlmBytes = ceilDiv(bytes_per_tpc * 64, 0x20000) * 0x20000; // round up
+    size_t nSlmBytes = ceilDiv(bytes_per_tpc * 64, 0x20000ul) * 0x20000; // round up
     LIBRECUDA_ERR_PROPAGATE(
             gpuAlloc(
                     ctx,
@@ -371,6 +432,188 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
     startExecution(COMPUTE);
     awaitExecution();
 
+    LIBRECUDA_SUCCEED();
+}
+
+
+typedef uint32_t qmd_cmd_t[0x40];
+
+libreCudaStatus_t
+NvCommandQueue::launchFunction(LibreCUFunction function,
+                               uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
+                               uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
+                               void **params, size_t numParams) {
+    LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+
+    LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function->local_mem_req));
+
+    // prepare constbuf0
+    NvU32 constbuf0_data[88] = {};
+    {
+        // little endian
+        constbuf0_data[6] = U64_LO_32_BITS(shared_mem_window);
+        constbuf0_data[7] = U64_HI_32_BITS(shared_mem_window);
+
+        constbuf0_data[8] = U64_LO_32_BITS(local_mem_window);
+        constbuf0_data[9] = U64_HI_32_BITS(local_mem_window);
+
+        constbuf0_data[10] = 0xfffdc0;
+        constbuf0_data[11] = 0;
+    }
+
+    // validate const0 exists
+    LIBRECUDA_VALIDATE(!function->constants.empty(), LIBRECUDA_ERROR_INVALID_IMAGE);
+
+    // prepare param pointer
+    NvU64 kernargs_pointer{};
+    size_t kernargs_size = roundUp(function->constants[0].size, NvU64(1 << 8)) + (8 << 8);
+    {
+        LIBRECUDA_ERR_PROPAGATE(allocKernArgs(&kernargs_pointer, kernargs_size));
+
+        {
+            auto kernargs_buf = reinterpret_cast<void *>(kernargs_pointer);
+            LIBRECUDA_VALIDATE(sizeof(constbuf0_data) < kernargs_size, LIBRECUDA_ERROR_INVALID_IMAGE);
+            memcpy(kernargs_buf, constbuf0_data, sizeof(constbuf0_data));
+        }
+        {
+            auto kernargs_buf = reinterpret_cast<NvU32 *>(kernargs_pointer + sizeof(constbuf0_data));
+            LIBRECUDA_VALIDATE((sizeof(constbuf0_data) + (numParams * 2 * sizeof(NvU32))) < kernargs_size,
+                               LIBRECUDA_ERROR_INVALID_IMAGE);
+
+            for (size_t i = 0; i < numParams; i++) {
+                auto *param_ptr = reinterpret_cast<NvU64 *>(params[i]);
+                auto param_buf_va = *param_ptr;
+                kernargs_buf[(i * 2)] = U64_LO_32_BITS(param_buf_va);
+                kernargs_buf[(i * 2) + 1] = U64_HI_32_BITS(param_buf_va);
+            }
+        }
+    }
+
+    uint32_t shmem_usage = function->shared_mem;
+    qmd_cmd_t qmd_data{};
+    {
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "bugprone-branch-clone"
+
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_QMD_GROUP_ID, , , 0x3F, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SM_GLOBAL_CACHING_ENABLE, , , 1, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_TEXTURE_HEADER_CACHE, , , 1, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_TEXTURE_SAMPLER_CACHE, , , 1, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_TEXTURE_DATA_CACHE, , , 1, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_SHADER_DATA_CACHE, , , 1, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_API_VISIBLE_CALL_LIMIT, , , 1, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SAMPLER_INDEX, , , 1, qmd_data);
+
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CWD_MEMBAR_TYPE, , , NVC6C0_QMDV03_00_CWD_MEMBAR_TYPE_L1_SYSMEMBAR, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_QMD_MAJOR_VERSION, , , 3, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_INVALIDATE(0), , , 1, qmd_data);
+
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SHARED_MEMORY_SIZE, , , maxOf(0x400u, roundUp(shmem_usage, 0x100u)),
+                           qmd_data);
+
+        // get smem config
+        uint32_t smem_config;
+        {
+            uint32_t min = UINT32_MAX;
+            for (auto shmem_conf: {32, 64, 100}) {
+                if ((shmem_conf * 1024) >= shmem_usage) {
+                    min = minOf(shmem_conf * 1024, min);
+                }
+            }
+            smem_config = (min / 4096) + 1;
+        }
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_MIN_SM_CONFIG_SHARED_MEM_SIZE, , , smem_config, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_MAX_SM_CONFIG_SHARED_MEM_SIZE, , , 0x1A, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_REGISTER_COUNT_V, , , function->num_registers, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_TARGET_SM_CONFIG_SHARED_MEM_SIZE, , , smem_config, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_BARRIER_COUNT, , , 1, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SHADER_LOCAL_MEMORY_HIGH_SIZE, , , currentSlmPerThread, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_PROGRAM_PREFETCH_SIZE, , , function->function_size >> 8, qmd_data);
+
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_PROGRAM_ADDRESS_LOWER, , , U64_LO_32_BITS(function->func_va_addr), qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_PROGRAM_ADDRESS_UPPER, , , U64_HI_32_BITS(function->func_va_addr), qmd_data);
+
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SASS_VERSION, , , 0x89,
+                           qmd_data); // TODO: HARDCODING THIS SEEMS DESTINED FOR DISASTER
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_PROGRAM_PREFETCH_ADDR_LOWER_SHIFTED, , , function->func_va_addr >> 8,
+                           qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_PROGRAM_PREFETCH_ADDR_UPPER_SHIFTED, , , function->func_va_addr >> 40,
+                           qmd_data);
+
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CTA_RASTER_WIDTH, , , gridDimX, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CTA_RASTER_HEIGHT, , , gridDimY, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CTA_RASTER_DEPTH, , , gridDimZ, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CTA_THREAD_DIMENSION0, , , blockDimX, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CTA_THREAD_DIMENSION1, , , blockDimY, qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CTA_THREAD_DIMENSION2, , , blockDimZ, qmd_data);
+
+        // setup constant buffers
+        const auto &constants = function->constants;
+        for (size_t i = 0; i < constants.size(); i++) {
+            auto &constant_info = constants[i];
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER(i), , , U64_HI_32_BITS(constant_info.address),
+                               qmd_data);
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER(i), , , U64_LO_32_BITS(constant_info.address),
+                               qmd_data);
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_SIZE_SHIFTED4(i), , , constant_info.size, qmd_data);
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_VALID(i), , , NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID_TRUE,
+                               qmd_data);
+        }
+
+        // setup param pointer
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER(0), , , U64_HI_32_BITS(kernargs_pointer),
+                           qmd_data);
+        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER(0), , , U64_LO_32_BITS(kernargs_pointer),
+                           qmd_data);
+#pragma clang diagnostic pop
+    }
+
+
+    NvU32 max_threads = ((65536 / roundUp(maxOf(1u, function->num_registers) * 32, 256u)) / 4) * 4 * 32;
+
+    NvU32 blockProd = blockDimX * blockDimY * blockDimZ;
+    if (blockProd > 1024 || max_threads < blockProd) {
+        LIBRECUDA_FAIL(LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    }
+
+    LIBRECUDA_VALIDATE(blockDimX < 1024, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(blockDimY < 1024, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(blockDimZ < 64, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+
+    LIBRECUDA_VALIDATE(gridDimX < 2147483647, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(gridDimY < 65535, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(gridDimZ < 65535, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+
+    // memory barrier
+    {
+        LIBRECUDA_ERR_PROPAGATE(enqueue(
+                makeNvMethod(1, NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI, 1),
+                {
+                        (NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_CONSTANT_TRUE << 12) |
+                        (NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_GLOBAL_DATA_TRUE << 4) |
+                        (NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_INSTRUCTION_TRUE << 0)
+                }
+        ));
+    }
+
+    // commence launch
+    {
+        NvU64 qmd_addr = kernargs_pointer + roundUp(function->constants[0].size, 1ul << 8);
+
+        // the qmd struct needs to be copied after kernel args
+        memcpy(reinterpret_cast<void *>(qmd_addr), qmd_data, sizeof(qmd_data));
+
+        LIBRECUDA_ERR_PROPAGATE(enqueue(
+                makeNvMethod(1, NVC6C0_SEND_PCAS_A, 0x1),
+                {NvU32(qmd_addr >> 8)}
+        ));
+
+        LIBRECUDA_ERR_PROPAGATE(enqueue(
+                makeNvMethod(1, NVC6C0_SEND_SIGNALING_PCAS2_B, 0x1),
+                {0x9} // TODO: whatever this means...
+        ));
+    }
+    timelineCtr++;
     LIBRECUDA_SUCCEED();
 }
 

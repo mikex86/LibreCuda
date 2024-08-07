@@ -23,8 +23,6 @@
 #include "nvidia/ctrl0080gpu.h"
 #include "nvidia/ctrlc36f.h"
 #include "nvidia/ctrla06c.h"
-#include "nvidia/clc6c0qmd.h"
-#include "nvidia/nvmisc.h"
 
 #include <elfio/elfio.hpp>
 
@@ -45,7 +43,6 @@
 
 NvHandle root{};
 
-
 static int fd_ctl = 0;
 static int fd_uvm = 0;
 
@@ -58,6 +55,23 @@ static bool librecudaInitialized = false;
 
 LibreCUcontext current_ctx = nullptr;
 #define LIBRECUDA_ENSURE_CTX_VALID() LIBRECUDA_VALIDATE(current_ctx != nullptr, LIBRECUDA_ERROR_INVALID_CONTEXT);
+
+libreCudaStatus_t rm_ctrl(int fd, NvV32 cmd, NvHandle client, NvHandle object, void *params, NvU32 paramSize) {
+    LIBRECUDA_VALIDATE(params != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    NVOS54_PARAMETERS parameters{
+            .hClient=client,
+            .hObject=object,
+            .cmd=cmd,
+            .params=params,
+            .paramsSize=paramSize
+    };
+    NV_IOWR(fd, NV_ESC_RM_CONTROL, &parameters, sizeof(parameters));
+    if (parameters.status != 0) {
+        LIBRECUDA_DEBUG("rm_ctrl failed with status: " + std::to_string(parameters.status));
+        LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN);
+    }
+    LIBRECUDA_SUCCEED();
+}
 
 libreCudaStatus_t libreCuInit(int flags) {
     if (librecudaInitialized) {
@@ -203,7 +217,7 @@ static inline NvU64 ceilDiv(NvU64 a, NvU64 b) {
     return (a + b - 1) / b;
 }
 
-static inline int maxOf(int a, int b) {
+static inline NvU32 maxOf(NvU32 a, NvU32 b) {
     return (a > b) ? a : b;
 }
 
@@ -451,6 +465,7 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
         RM_ALLOC(fd_ctl, KEPLER_CHANNEL_GROUP_A, root, device_handle, 0, &params, sizeof(params),
                  &channel_group);
     }
+    ctx->channel_group = channel_group;
 
     // create ctx share
     NvHandle ctx_share{};
@@ -461,6 +476,7 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
         };
         RM_ALLOC(fd_ctl, FERMI_CONTEXT_SHARE_A, root, channel_group, 0, &params, sizeof(params), &ctx_share);
     }
+    ctx->ctx_share = ctx_share;
 
     // get compute class
     {
@@ -543,10 +559,6 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     ctx->compute_gpfifo = compute_gpfifo;
     ctx->dma_gpfifo = dma_gpfifo;
 
-    // create command queue
-    ctx->command_queue = new NvCommandQueue(ctx);
-    LIBRECUDA_ERR_PROPAGATE(ctx->command_queue->initializeQueue());
-
     *pCtx = ctx;
     current_ctx = ctx;
 
@@ -564,8 +576,6 @@ libreCudaStatus_t libreCuCtxDestroy(LibreCUcontext ctx) {
     // close device fd
     close(ctx->device_fd);
 
-    // delete command queue
-    delete ctx->command_queue;
     delete ctx;
 
     LIBRECUDA_SUCCEED();
@@ -664,14 +674,14 @@ gpuAlloc(LibreCUcontext ctx, size_t size, bool physicalContiguity, bool hugePage
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t libreCuMemAlloc(void **pDevicePointer, size_t bytesize) {
+libreCudaStatus_t libreCuMemAlloc(void **pDevicePointer, size_t bytesize, bool mapToCpu) {
     LIBRECUDA_VALIDATE(pDevicePointer != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(bytesize > 0, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ENSURE_CTX_VALID();
     NvU64 va_address{};
     {
         bool hugePages = bytesize > (16 << 20);
-        gpuAlloc(current_ctx, bytesize, false, hugePages, false, 0, &va_address);
+        gpuAlloc(current_ctx, bytesize, false, hugePages, mapToCpu, 0, &va_address);
     }
     *pDevicePointer = reinterpret_cast<void *>(va_address);
     LIBRECUDA_SUCCEED();
@@ -755,11 +765,6 @@ libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount) {
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t ensureEnoughLocalMem(LibreCUcontext ctx, NvU32 localMemReq) {
-    LIBRECUDA_VALIDATE(ctx != nullptr, LIBRECUDA_ERROR_INVALID_CONTEXT);
-    LIBRECUDA_ERR_PROPAGATE(ctx->command_queue->ensureEnoughLocalMem(localMemReq));
-    LIBRECUDA_SUCCEED();
-}
 
 struct RelocInfo {
     ELFIO::Elf64_Addr apply_image_offset;
@@ -791,9 +796,13 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     );
 
     std::unordered_set<std::string> function_names{}; // list of all function names
-    std::unordered_map<std::string, NvU32> shared_mem{}; // maps function names to their shared memory requirements
+    std::unordered_map<std::string, NvU32> function_argcs{}; // maps function names to the number of input parameters they request
+    std::unordered_map<std::string, NvU32> function_shared_mem{}; // maps function names to their shared memory requirements
     std::unordered_map<std::string, NvU64> function_addrs{}; // maps function names to their addresses in the uploaded memory
-    std::unordered_map<NvU32, KernelConstantInfo> constants{}; // numbered list of constants
+    std::unordered_map<std::string, NvU32> function_regs{}; // maps function names to their register requirements (n registers)
+    std::unordered_map<std::string, NvU32> function_local_mem_reqs{}; // maps function names to their local mem requirements
+    std::unordered_map<std::string, NvU64> function_sizes{}; // maps function names to their function sizes in bytes
+    std::unordered_map<std::string, std::vector<KernelConstantInfo>> constants{}; // maps function names to their list of constants
 
     // iterate over sections
     std::vector<RelocInfo> relocs{};
@@ -813,7 +822,6 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
 
     for (const auto &section: elf_reader.sections) {
         const std::string &section_name = section->get_name();
-
         // prepare code relocations
         if (section->get_type() == ELFIO::SHT_REL || section->get_type() == ELFIO::SHT_RELA) {
             std::string target_section_name{};
@@ -884,13 +892,19 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
         }
         if (section_name.size() > 11 && section_name.substr(0, 11) == ".nv.shared.") {
             std::string function_name = section_name.substr(11);
-            shared_mem[function_name] = elf_reader.get_section_entry_size();
+            function_shared_mem[function_name] = elf_reader.get_section_entry_size();
         } else if (section_name.size() > 6 && section_name.substr(0, 6) == ".text.") {
             std::string function_name = section_name.substr(6);
             function_names.insert(function_name);
 
             // map to where the function is in the allocated memory
             function_addrs[function_name] = module_gpu_va + section->get_offset();
+
+            // extract number of registers from section info
+            function_regs[function_name] = section->get_info() >> 24;
+
+            // map function to its size
+            function_sizes[function_name] = section->get_size();
         } else if (section_name.size() > 12 && section_name.substr(0, 12) == ".nv.constant") {
             std::string constant_nr_str = section_name.substr(12);
 
@@ -899,19 +913,38 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             LIBRECUDA_VALIDATE(constant_nr_str[end] == '.', LIBRECUDA_ERROR_INVALID_IMAGE);
 
             std::string function_name = constant_nr_str.substr(end + 1);
-            constants[constant_nr] = {
+
+            auto &func_constants_list = constants[function_name];
+
+            auto const_info = KernelConstantInfo{
                     .address=module_gpu_va + section->get_offset(),
                     .size=section->get_size()
             };
+            if (func_constants_list.size() < constant_nr + 1) {
+                func_constants_list.resize(constant_nr + 1);
+            }
+            func_constants_list[constant_nr] = const_info;
         } else if (section_name == ".nv.info") {
             const char *data = section->get_data();
             for (int off = 0; off < section->get_size(); off += (sizeof(NvU32) * 3)) {
                 const auto *line = reinterpret_cast<const NvU32 *>(data + off);
                 NvU32 type = line[0];
+                NvU32 func = line[1];
                 NvU32 value = line[2];
+
                 if ((type & 0xffff) == 0x1204) {
+
+                    auto target = elf_reader.sections[func];
+                    auto target_name = target->get_name();
+                    LIBRECUDA_VALIDATE(target_name.size() > 9 && target_name.substr(0, 9) == ".nv.info.",
+                                       LIBRECUDA_ERROR_INVALID_IMAGE);
+
+                    auto target_function_name = target_name.substr(9);
+
                     NvU32 local_mem_req = value + 0x240;
-                    LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(current_ctx, local_mem_req));
+
+                    NvU32 max_local_mem_req = function_local_mem_reqs[target_function_name];
+                    function_local_mem_reqs[target_function_name] = maxOf(max_local_mem_req, local_mem_req);
                 }
             }
         }
@@ -919,16 +952,21 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     std::vector<LibreCUFunction_> functions{};
     functions.reserve(function_names.size());
     for (const auto &func_name: function_names) {
+        // TODO: validate each of those map lookups and throw invalid image errors
         functions.push_back(LibreCUFunction_{
                 .name=func_name,
+                .argc=function_argcs[func_name],
                 .func_va_addr=function_addrs[func_name],
-                .shared_mem=shared_mem[func_name]
+                .shared_mem=function_shared_mem[func_name],
+                .num_registers=function_regs[func_name],
+                .local_mem_req=function_local_mem_reqs[func_name],
+                .function_size=function_sizes[func_name],
+                .constants=constants[func_name]
         });
     }
     *pModule = new LibreCUmodule_{
-            functions,
-            module_gpu_va,
-            constants
+            .functions=functions,
+            .module_va_addr=module_gpu_va
     };
 
     // apply relocations
@@ -995,29 +1033,21 @@ libreCudaStatus_t libreCuModuleGetFunction(LibreCUFunction *pFunc, LibreCUmodule
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t libreCuLaunchKernel() {
-    uint32_t shmem_usage{};
-    {
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "bugprone-branch-clone"
-        uint32_t dat[0x40];
-        memset(dat, 0, sizeof(dat));
-
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_QMD_GROUP_ID, , , 0x3F, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SM_GLOBAL_CACHING_ENABLE, , , 1, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_TEXTURE_HEADER_CACHE, , , 1, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_TEXTURE_SAMPLER_CACHE, , , 1, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_TEXTURE_DATA_CACHE, , , 1, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_INVALIDATE_SHADER_DATA_CACHE, , , 1, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_API_VISIBLE_CALL_LIMIT, , , 1, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SAMPLER_INDEX, , , 1, dat);
-
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SAMPLER_INDEX, , , NVC6C0_QMDV03_00_CWD_MEMBAR_TYPE_L1_SYSMEMBAR, dat);
-        FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_SHARED_MEMORY_SIZE, , , maxOf(0x400, ceilDiv(shmem_usage, 0x100) * 0x100),
-                           dat);
-#pragma clang diagnostic pop
-    }
-
+libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
+                                      uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
+                                      uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
+                                      uint32_t sharedMemBytes,
+                                      LibreCUstream stream,
+                                      void **kernelParams, size_t numParams,
+                                      void **extra) {
+    LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    stream->command_queue->launchFunction(function,
+                                          gridDimX, gridDimY, gridDimZ,
+                                          blockDimX, blockDimY, blockDimZ,
+                                          kernelParams,
+                                          numParams
+    );
     LIBRECUDA_SUCCEED();
 }
 
@@ -1032,5 +1062,41 @@ libreCudaStatus_t libreCuModuleUnload(LibreCUmodule function) {
 libreCudaStatus_t libreCuFuncGetName(const char **pNameOut, LibreCUFunction func) {
     LIBRECUDA_VALIDATE(pNameOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     *pNameOut = func->name.c_str();
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut, uint32_t flags) {
+    LIBRECUDA_VALIDATE(pStreamOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+
+    // create command queue
+    auto command_queue = new NvCommandQueue(current_ctx);
+    LIBRECUDA_ERR_PROPAGATE(command_queue->initializeQueue());
+
+    *pStreamOut = new LibreCUstream_{
+            .command_queue=command_queue
+    };
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuStreamCommence(LibreCUstream stream) {
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    stream->command_queue->startExecution(COMPUTE);
+    LIBRECUDA_SUCCEED();
+}
+
+
+libreCudaStatus_t libreCuStreamAwait(LibreCUstream stream) {
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    stream->command_queue->awaitExecution();
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuStreamDestroy(LibreCUstream stream) {
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+
+    // delete command queue
+    delete stream->command_queue;
+
+    delete stream;
     LIBRECUDA_SUCCEED();
 }

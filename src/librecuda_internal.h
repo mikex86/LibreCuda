@@ -38,9 +38,11 @@ struct LibreCUcontext_ {
     NvU64 uvm_vaddr = 0x1000000000;
     NvHandle va_space_handle{};
 
-    NvCommandQueue *command_queue;
     GPFifo compute_gpfifo;
     GPFifo dma_gpfifo;
+
+    NvHandle ctx_share;
+    NvHandle channel_group;
 };
 
 
@@ -60,17 +62,21 @@ struct LibreCUmodule_ {
      * This address is freed on unload.
      */
     NvU64 module_va_addr{};
-
-    /**
-     * numbered list of constants
-     */
-    std::unordered_map<NvU32, KernelConstantInfo> constants{};
 };
 
 struct LibreCUFunction_ {
     std::string name;
+    NvU32 argc;
     NvU64 func_va_addr;
     NvU32 shared_mem;
+    NvU32 num_registers;
+    NvU32 local_mem_req;
+    NvU64 function_size;
+    std::vector<KernelConstantInfo> constants;
+};
+
+struct LibreCUstream_ {
+    NvCommandQueue *command_queue;
 };
 
 
@@ -138,22 +144,7 @@ static inline libreCudaStatus_t rm_alloc(int fd, NvV32 clss,
 static inline libreCudaStatus_t rm_ctrl(int fd,
                                         NvV32 cmd,
                                         NvHandle client, NvHandle object,
-                                        void *params, NvU32 paramSize) {
-    LIBRECUDA_VALIDATE(params != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    NVOS54_PARAMETERS parameters{
-            .hClient=client,
-            .hObject=object,
-            .cmd=cmd,
-            .params=params,
-            .paramsSize=paramSize
-    };
-    NV_IOWR(fd, NV_ESC_RM_CONTROL, &parameters, sizeof(parameters));
-    if (parameters.status != 0) {
-        LIBRECUDA_DEBUG("rm_ctrl failed with status: " + std::to_string(parameters.status));
-        LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN);
-    }
-    LIBRECUDA_SUCCEED();
-}
+                                        void *params, NvU32 paramSize);
 
 #define LIBRECUDA_VALIDATE_RM_CTRL(status) { if (status != LIBRECUDA_SUCCESS) { LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
 
@@ -167,7 +158,6 @@ gpuAlloc(LibreCUcontext ctx, size_t size, bool physicalContiguity, bool hugePage
 libreCudaStatus_t
 gpuSystemAlloc(LibreCUcontext ctx, size_t size, bool mapToCpu, NvU32 mapFlags,
                NvU64 *pVaOut, NvHandle *pMemoryHandleOut = nullptr);
-
 
 libreCudaStatus_t gpuFree(LibreCUcontext ctx, NvU64 virtualAddress);
 

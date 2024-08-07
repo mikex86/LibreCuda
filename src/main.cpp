@@ -35,7 +35,7 @@ int main() {
     uint8_t *image;
     size_t n_bytes;
     {
-        std::ifstream input("complex.cubin", std::ios::binary);
+        std::ifstream input("write_float.cubin", std::ios::binary);
         std::vector<uint8_t> bytes(
                 (std::istreambuf_iterator<char>(input)),
                 (std::istreambuf_iterator<char>()));
@@ -46,6 +46,7 @@ int main() {
     }
     CUDA_CHECK(libreCuModuleLoadData(&module, image, n_bytes));
 
+    // read functions
     uint32_t num_funcs{};
     CUDA_CHECK(libreCuModuleGetFunctionCount(&num_funcs, module));
     std::cout << "Num functions: " << num_funcs << std::endl;
@@ -62,11 +63,55 @@ int main() {
 
     delete[] functions;
 
+    // find function
     LibreCUFunction func{};
-    CUDA_CHECK(libreCuModuleGetFunction(&func, module, "matmul_kernel"));
+    CUDA_CHECK(libreCuModuleGetFunction(&func, module, "write_float"));
 
+    // create stream
+    LibreCUstream stream{};
+    CUDA_CHECK(libreCuStreamCreate(&stream, 0));
+
+    void *float_dst_va{};
+    CUDA_CHECK(libreCuMemAlloc(&float_dst_va, sizeof(float), true));
+
+    float float_value = 3.1415f;
+    void *float_src_va{};
+    CUDA_CHECK(libreCuMemAlloc(&float_src_va, sizeof(float), true));
+    *(float *) (float_src_va) = float_value;
+
+    std::cout << "Src value: " << float_value << std::endl;
+    std::cout << "Dst value (pre exec): " << *(float *) (float_dst_va) << std::endl;
+
+    void *params[] = {
+            &float_dst_va, // dst
+            &float_src_va // src
+    };
+    CUDA_CHECK(libreCuLaunchKernel(func,
+                                   1, 1, 1,
+                                   1, 1, 1,
+                                   0,
+                                   stream,
+                                   params, sizeof(params) / sizeof(void *),
+                                   nullptr
+    ));
+
+    // dispatch built up command buffer to GPU
+    CUDA_CHECK(libreCuStreamCommence(stream));
+
+    // wait for work to complete
+    CUDA_CHECK(libreCuStreamAwait(stream));
+    std::cout << "Dst value (post exec): " << *(float *) (float_dst_va) << std::endl;
+
+    // free memory
+    CUDA_CHECK(libreCuMemFree(float_dst_va));
+
+    // destroy stream
+    CUDA_CHECK(libreCuStreamDestroy(stream));
+
+    // unload module
     CUDA_CHECK(libreCuModuleUnload(module));
 
+    /*
     void *device_ptr{};
     CUDA_CHECK(libreCuMemAlloc(&device_ptr, 1024 * sizeof(float)));
 
@@ -81,6 +126,8 @@ int main() {
     CUDA_CHECK(libreCuMemCpy(device_ptr, device_ptr, sizeof(data)));
 
     CUDA_CHECK(libreCuMemFree(device_ptr));
+    */
+
     CUDA_CHECK(libreCuCtxDestroy(ctx));
     return 0;
 }
