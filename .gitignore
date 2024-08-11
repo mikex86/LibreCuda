@@ -1,0 +1,42 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+
+# Visaul Studio files
+*.sdf
+*.suo
+*.sln
+*.vcxproj
+
+# Cmake folders
+cmake-build-*/
+build/
+debug/
+
+# IntelliJ
+.idea/
+
+# Vscode
+.vscode/

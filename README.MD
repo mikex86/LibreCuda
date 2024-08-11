@@ -100,8 +100,10 @@ int main() {
     return 0;
 }
 ```
-### Outputs:
-```
+
+### Outputs
+
+```console
 Device count: 1
 Num functions: 1
   function "write_float"
@@ -110,12 +112,14 @@ Dst value (pre exec): 0
 Dst value (post exec): 3.1415
 ```
 
-
 ## Project Status
+
 The project is in its early stages and currently implements only rudimentary CUDA functions. It is not yet ready for production use.
 
 ## Contributing
+
 Contributions are welcome! Please submit issues and pull requests to help improve LibreCUDA.
 
 ## License
+
 This project is licensed under the MIT License.
