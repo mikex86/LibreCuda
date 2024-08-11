@@ -314,10 +314,14 @@ memMapToCpu(LibreCUcontext ctx, NvHandle memoryHandle, size_t size, NvU64 cpuVir
     int device_fd;
     if (isSystemAlloc) {
         device_fd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
+        if (device_fd < 0)
+            LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_DEVICE);
     } else {
         std::string device_file = getDeviceFile(ctx->device);
 
         device_fd = open(device_file.c_str(), O_RDWR | O_CLOEXEC);
+        if (device_fd < 0)
+            LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_DEVICE);
         nv_ioctl_register_fd_t params{
                 .ctl_fd=fd_ctl
         };
