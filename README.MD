@@ -80,12 +80,12 @@ int main() {
             &float_src_va // src
     };
     libreCuLaunchKernel(func,
-                                   1, 1, 1,
-                                   1, 1, 1,
-                                   0,
-                                   stream,
-                                   params, sizeof(params) / sizeof(void *),
-                                   nullptr
+                        1, 1, 1,
+                        1, 1, 1,
+                        0,
+                        stream,
+                        params, sizeof(params) / sizeof(void *),
+                        nullptr
     );
 
     libreCuStreamCommence(stream);
