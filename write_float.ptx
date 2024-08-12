@@ -7,26 +7,65 @@
 //
 
 .version 8.4
-.target sm_52
+.target sm_89
 .address_size 64
 
-	// .globl	write_float
+	// .globl	write_float_ptr
 
-.visible .entry write_float(
-	.param .u64 write_float_param_0,
-	.param .u64 write_float_param_1
+.visible .entry write_float_ptr(
+	.param .u64 write_float_ptr_param_0,
+	.param .u64 write_float_ptr_param_1
 )
 {
 	.reg .f32 	%f<2>;
 	.reg .b64 	%rd<5>;
 
 
-	ld.param.u64 	%rd1, [write_float_param_0];
-	ld.param.u64 	%rd2, [write_float_param_1];
+	ld.param.u64 	%rd1, [write_float_ptr_param_0];
+	ld.param.u64 	%rd2, [write_float_ptr_param_1];
 	cvta.to.global.u64 	%rd3, %rd1;
 	cvta.to.global.u64 	%rd4, %rd2;
 	ld.global.f32 	%f1, [%rd4];
 	st.global.f32 	[%rd3], %f1;
+	ret;
+
+}
+	// .globl	write_float_value
+.visible .entry write_float_value(
+	.param .u64 write_float_value_param_0,
+	.param .f32 write_float_value_param_1
+)
+{
+	.reg .f32 	%f<2>;
+	.reg .b64 	%rd<3>;
+
+
+	ld.param.u64 	%rd1, [write_float_value_param_0];
+	ld.param.f32 	%f1, [write_float_value_param_1];
+	cvta.to.global.u64 	%rd2, %rd1;
+	st.global.f32 	[%rd2], %f1;
+	ret;
+
+}
+	// .globl	write_float_sum
+.visible .entry write_float_sum(
+	.param .u64 write_float_sum_param_0,
+	.param .u16 write_float_sum_param_1,
+	.param .f32 write_float_sum_param_2
+)
+{
+	.reg .b16 	%rs<2>;
+	.reg .f32 	%f<4>;
+	.reg .b64 	%rd<3>;
+
+
+	ld.param.u64 	%rd1, [write_float_sum_param_0];
+	ld.param.u16 	%rs1, [write_float_sum_param_1];
+	ld.param.f32 	%f1, [write_float_sum_param_2];
+	cvta.to.global.u64 	%rd2, %rd1;
+	cvt.rn.f32.s16 	%f2, %rs1;
+	add.f32 	%f3, %f2, %f1;
+	st.global.f32 	[%rd2], %f3;
 	ret;
 
 }

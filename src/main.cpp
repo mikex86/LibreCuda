@@ -5,6 +5,7 @@
 #include <vector>
 #include <fstream>
 #include <cstring>
+#include <iomanip>
 
 inline void cudaCheck(libreCudaStatus_t error, const char *file, int line) {
     if (error != LIBRECUDA_SUCCESS) {
@@ -65,7 +66,7 @@ int main() {
 
     // find function
     LibreCUFunction func{};
-    CUDA_CHECK(libreCuModuleGetFunction(&func, module, "write_float"));
+    CUDA_CHECK(libreCuModuleGetFunction(&func, module, "write_float_sum"));
 
     // create stream
     LibreCUstream stream{};
@@ -74,26 +75,31 @@ int main() {
     void *float_dst_va{};
     CUDA_CHECK(libreCuMemAlloc(&float_dst_va, sizeof(float), true));
 
-    float float_value = 3.1415f;
-    void *float_src_va{};
-    CUDA_CHECK(libreCuMemAlloc(&float_src_va, sizeof(float), true));
-    *(float *) (float_src_va) = float_value;
+    float float_value = 0.31415f;
+    short short_value = 314;
 
-    std::cout << "Src value: " << float_value << std::endl;
+    std::cout << std::fixed;
+    std::cout << std::setprecision(5);
+
+    std::cout << "A value: " << short_value << std::endl;
+    std::cout << "B value: " << float_value << std::endl;
     std::cout << "Dst value (pre exec): " << *(float *) (float_dst_va) << std::endl;
 
     void *params[] = {
             &float_dst_va, // dst
-            &float_src_va // src
+            &short_value, // a
+            &float_value // b
     };
-    CUDA_CHECK(libreCuLaunchKernel(func,
-                                   1, 1, 1,
-                                   1, 1, 1,
-                                   0,
-                                   stream,
-                                   params, sizeof(params) / sizeof(void *),
-                                   nullptr
-    ));
+    CUDA_CHECK(
+            libreCuLaunchKernel(func,
+                                1, 1, 1,
+                                1, 1, 1,
+                                0,
+                                stream,
+                                params, sizeof(params) / sizeof(void *),
+                                nullptr
+            )
+    );
 
     // dispatch built up command buffer to GPU
     CUDA_CHECK(libreCuStreamCommence(stream));

@@ -480,11 +480,36 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
             LIBRECUDA_VALIDATE((sizeof(constbuf0_data) + (numParams * 2 * sizeof(NvU32))) < kernargs_size,
                                LIBRECUDA_ERROR_INVALID_IMAGE);
 
+            size_t j = 0;
             for (size_t i = 0; i < numParams; i++) {
-                auto *param_ptr = reinterpret_cast<NvU64 *>(params[i]);
-                auto param_buf_va = *param_ptr;
-                kernargs_buf[(i * 2)] = U64_LO_32_BITS(param_buf_va);
-                kernargs_buf[(i * 2) + 1] = U64_HI_32_BITS(param_buf_va);
+                switch (function->param_info[i].param_size) {
+                    case 8: {
+                        auto *param_ptr = reinterpret_cast<NvU64 *>(params[i]);
+                        auto param_value = *param_ptr;
+                        kernargs_buf[j++] = U64_LO_32_BITS(param_value);
+                        kernargs_buf[j++] = U64_HI_32_BITS(param_value);
+                        break;
+                    }
+                    case 4: {
+                        auto *param_ptr = reinterpret_cast<NvU32 *>(params[i]);
+                        auto param_value = *param_ptr;
+                        kernargs_buf[j++] = param_value;
+                        break;
+                    }
+                    case 2: {
+                        auto *param_ptr = reinterpret_cast<NvU16 *>(params[i]);
+                        auto param_value = *param_ptr;
+                        kernargs_buf[j++] = param_value;
+                        break;
+                    }
+                    case 1: {
+                        auto *param_ptr = reinterpret_cast<NvU8 *>(params[i]);
+                        auto param_value = *param_ptr;
+                        kernargs_buf[j++] = param_value;
+                        break;
+                    }
+                    default: LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE)
+                }
             }
         }
     }

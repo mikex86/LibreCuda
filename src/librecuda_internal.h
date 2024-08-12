@@ -51,6 +51,12 @@ struct KernelConstantInfo {
     NvU64 size;
 };
 
+struct KernelParamInfo {
+    NvU16 param_index;
+    NvU16 param_offset;
+    NvU16 param_size;
+};
+
 struct LibreCUmodule_ {
     /**
      * List of all functions of the module
@@ -73,6 +79,7 @@ struct LibreCUFunction_ {
     NvU32 local_mem_req;
     NvU64 function_size;
     std::vector<KernelConstantInfo> constants;
+    std::vector<KernelParamInfo> param_info;
 };
 
 struct LibreCUstream_ {

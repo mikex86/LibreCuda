@@ -16,7 +16,6 @@ typedef int libreCudaStatus_t;
 #include "librecuda_all_statuess.h"
 #undef LIBRECUDA_DECLARE_STATUS
 
-
 #define LIBRECUDA_SUCCEED() { return LIBRECUDA_SUCCESS; }
 #define LIBRECUDA_FAIL(status) { return status; }
 

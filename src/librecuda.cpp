@@ -772,6 +772,29 @@ struct RelocInfo {
     uint32_t typ;
 };
 
+#define EIATTR_MIN_STACK_SIZE 0x1204
+
+// Constants for attributes defined in .nv.info.<func_name> sections
+// along with their size in increments of 32-bit word (section is .align 4)
+#define EIATTR_CUDA_API_VERSION 0x3704
+#define EIATTR_CUDA_API_VERSION_ATTR_WORD_LEN 2
+
+#define EIATTR_PARAM_CBANK 0x0a04
+#define EIATTR_PARAM_CBANK_ATTR_WORD_LEN 3
+
+#define EIATTR_CBANK_PARAM_SIZE 0x1903
+#define EIATTR_CBANK_PARAM_SIZE_ATTR_WORD_LEN 1
+
+#define EIATTR_KPARAM_INFO 0x1704
+#define EIATTR_KPARAM_INFO_ATTR_WORD_LEN 4
+
+#define EIATTR_MAXREG_COUNT 0x1b03
+#define EIATTR_MAXREG_COUNT_ATTR_WORD_LEN 4
+
+#define EIATTR_EXIT_INSTR_OFFSETS 0x1c04
+#define EIATTR_EXIT_INSTR_ATTR_WORD_LEN 4
+
+
 libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *image, size_t imageSize) {
     LIBRECUDA_VALIDATE(pModule != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(image != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
@@ -803,6 +826,8 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     std::unordered_map<std::string, NvU32> function_local_mem_reqs{}; // maps function names to their local mem requirements
     std::unordered_map<std::string, NvU64> function_sizes{}; // maps function names to their function sizes in bytes
     std::unordered_map<std::string, std::vector<KernelConstantInfo>> constants{}; // maps function names to their list of constants
+    std::unordered_map<std::string, std::vector<KernelParamInfo>> param_infos{}; // maps function names to function parameter info
+    std::unordered_map<std::string, size_t> param_total_sizes{}; // maps function names to their total parameter size
 
     // iterate over sections
     std::vector<RelocInfo> relocs{};
@@ -932,23 +957,96 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                 NvU32 func = line[1];
                 NvU32 value = line[2];
 
-                if ((type & 0xffff) == 0x1204) {
-
-                    auto target = elf_reader.sections[func];
+                if ((type & 0xffff) == EIATTR_MIN_STACK_SIZE) {
+                    auto target = elf_reader.sections[func +
+                                                      5]; // ignores null section, .shstrtab, .strtab, .symtab & .debug_frame
                     auto target_name = target->get_name();
-                    LIBRECUDA_VALIDATE(target_name.size() > 9 && target_name.substr(0, 9) == ".nv.info.",
-                                       LIBRECUDA_ERROR_INVALID_IMAGE);
-
-                    auto target_function_name = target_name.substr(9);
 
                     NvU32 local_mem_req = value + 0x240;
 
-                    NvU32 max_local_mem_req = function_local_mem_reqs[target_function_name];
-                    function_local_mem_reqs[target_function_name] = maxOf(max_local_mem_req, local_mem_req);
+                    NvU32 max_local_mem_req = function_local_mem_reqs[target_name];
+                    function_local_mem_reqs[target_name] = maxOf(max_local_mem_req, local_mem_req);
+                }
+            }
+        } else if (section_name.size() > 9 && section_name.substr(0, 9) == ".nv.info.") {
+            auto target_function_name = section_name.substr(9);
+            const char *data = section->get_data();
+
+            for (int off = 0; off < section->get_size();) {
+                const auto *line = reinterpret_cast<const NvU32 *>(data + off);
+                NvU32 key = line[0];
+                NvU16 type = key & 0xffff;
+                switch (type) {
+                    case EIATTR_CUDA_API_VERSION: {
+                        off += (EIATTR_CUDA_API_VERSION_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_PARAM_CBANK: {
+                        off += (EIATTR_PARAM_CBANK_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_CBANK_PARAM_SIZE: {
+                        off += (EIATTR_CBANK_PARAM_SIZE_ATTR_WORD_LEN * sizeof(NvU32));
+                        size_t total_size = (key >> 16) & 0xffff;
+                        param_total_sizes[target_function_name] = total_size;
+                        break;
+                    }
+                    case EIATTR_KPARAM_INFO: {
+                        NvU32 attr_data = line[2];
+                        NvU16 param_idx = attr_data & 0xffff;
+                        NvU16 param_offset = (attr_data >> 16) & 0xffff;
+                        off += (EIATTR_KPARAM_INFO_ATTR_WORD_LEN * sizeof(NvU32));
+                        param_infos[target_function_name].push_back(KernelParamInfo{
+                                .param_index=param_idx,
+                                .param_offset=param_offset
+                        });
+                        break;
+                    }
+                    case EIATTR_MAXREG_COUNT: {
+                        off += (EIATTR_MAXREG_COUNT_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_EXIT_INSTR_OFFSETS: {
+                        off += (EIATTR_EXIT_INSTR_OFFSETS * sizeof(NvU32));
+                        break;
+                    }
+                    default: {
+                        // TODO: This isn't strictly correct,
+                        //  it just means we don't know the attribute yet.
+                        //  But we HAVE to abort here, because of the variable length nature of attributes
+                        LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_IMAGE)
+                    }
                 }
             }
         }
     }
+
+    // finalize parameter info
+    for (const auto &function_name: function_names) {
+        auto &params = param_infos[function_name];
+
+        // sort by param_index
+        {
+            auto compare = [](const KernelParamInfo &a, const KernelParamInfo &b) {
+                return a.param_index < b.param_index;
+            };
+
+            std::sort(params.begin(), params.end(), compare);
+        }
+
+        // compute parameter sizes
+        for (size_t i = 0; i < params.size(); i++) {
+            auto &current = params[i];
+            if (i + 1 < params.size()) {
+                const auto &next = params[i + 1];
+                current.param_size = next.param_offset - current.param_offset;
+            } else {
+                size_t total_param_size = param_total_sizes[function_name];
+                current.param_size = total_param_size - current.param_offset;
+            }
+        }
+    }
+
     std::vector<LibreCUFunction_> functions{};
     functions.reserve(function_names.size());
     for (const auto &func_name: function_names) {
@@ -961,7 +1059,8 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                 .num_registers=function_regs[func_name],
                 .local_mem_req=function_local_mem_reqs[func_name],
                 .function_size=function_sizes[func_name],
-                .constants=constants[func_name]
+                .constants=constants[func_name],
+                .param_info=param_infos[func_name]
         });
     }
     *pModule = new LibreCUmodule_{
