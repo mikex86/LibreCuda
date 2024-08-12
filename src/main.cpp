@@ -37,6 +37,10 @@ int main() {
     size_t n_bytes;
     {
         std::ifstream input("write_float.cubin", std::ios::binary);
+        if (!input.is_open()) {
+            std::cerr << "Failed to open cubin file" << std::endl;
+            return 1;
+        }
         std::vector<uint8_t> bytes(
                 (std::istreambuf_iterator<char>(input)),
                 (std::istreambuf_iterator<char>()));
