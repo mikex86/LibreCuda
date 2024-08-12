@@ -100,15 +100,11 @@ libreCudaStatus_t libreCuInit(int flags) {
         UVM_MM_INITIALIZE_PARAMS params{
                 .uvmFd=fd_uvm
         };
+        // Not required by all platforms, status only ok when needed
+        // On Linux, open-kernel-modules requires the fd, while the proprietary driver does not
         int ret = uvm_ioctl(fd_uvm_2, UVM_MM_INITIALIZE, &params);
         int status = params.rmStatus;  
         if (ret != 0 || status != 0) {
-            /* 
-             * FROM: uvm_ioctl.h:
-             * Not all platforms require this secondary file-descriptor. On those
-             * platforms NV_WARN_NOTHING_TO_DO will be returned and users may
-             * close the file-descriptor at anytime.
-             */
             if (status == NV_WARN_NOTHING_TO_DO) {
                 close(fd_uvm_2);
             } else {
