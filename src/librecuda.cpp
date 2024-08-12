@@ -100,7 +100,23 @@ libreCudaStatus_t libreCuInit(int flags) {
         UVM_MM_INITIALIZE_PARAMS params{
                 .uvmFd=fd_uvm
         };
-        UVM_IOCTL(fd_uvm_2, UVM_MM_INITIALIZE, &params, sizeof(params));
+        int ret = uvm_ioctl(fd_uvm_2, UVM_MM_INITIALIZE, &params);
+        int status = params.rmStatus;  
+        if (ret != 0 || status != 0) {
+            /* 
+             * FROM: uvm_ioctl.h:
+             * Not all platforms require this secondary file-descriptor. On those
+             * platforms NV_WARN_NOTHING_TO_DO will be returned and users may
+             * close the file-descriptor at anytime.
+             */
+            if (status == NV_WARN_NOTHING_TO_DO) {
+                close(fd_uvm_2);
+            } else {
+                LIBRECUDA_DEBUG("UVM_MM_INITIALIZE failed with return code " + std::to_string(ret) + " and status " +
+                                std::to_string(status));
+                LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN);
+            }
+        }
     }
 
     // obtaining basic card info
