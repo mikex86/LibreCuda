@@ -11,3 +11,5 @@ add_executable(LibreCuda
         src/cmdqueue.cpp)
 
 target_link_libraries(LibreCuda PRIVATE elfio)
+
+file(COPY ${CMAKE_SOURCE_DIR}/write_float.cubin DESTINATION ${CMAKE_BINARY_DIR})
