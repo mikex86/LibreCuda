@@ -103,7 +103,7 @@ libreCudaStatus_t libreCuInit(int flags) {
         // Not required by all platforms, status only ok when needed
         // On Linux, open-kernel-modules requires the fd, while the proprietary driver does not
         int ret = uvm_ioctl(fd_uvm_2, UVM_MM_INITIALIZE, &params);
-        int status = params.rmStatus;  
+        int status = params.rmStatus;
         if (ret != 0 || status != 0) {
             if (status == NV_WARN_NOTHING_TO_DO) {
                 close(fd_uvm_2);
@@ -803,13 +803,19 @@ struct RelocInfo {
 #define EIATTR_KPARAM_INFO_ATTR_WORD_LEN 4
 
 #define EIATTR_MAXREG_COUNT 0x1b03
-#define EIATTR_MAXREG_COUNT_ATTR_WORD_LEN 4
+#define EIATTR_MAXREG_COUNT_ATTR_WORD_LEN 1
 
 #define EIATTR_EXIT_INSTR_OFFSETS 0x1c04
 #define EIATTR_EXIT_INSTR_OFFSETS_ATTR_WORD_LEN 4
 
 #define EIATTR_SW2861232_WAR 0x3501
 #define EIATTR_SW2861232_ATTR_WORD_LEN 1
+
+#define EIATTR_EXTERNS 0x0f04
+#define EIATTR_EXTERNS_ATTR_WORD_LEN 2
+
+#define EIATTR_SYSCALL_OFFSETS 0x4604
+#define EIATTR_SYSCALL_OFFSETS_ATTR_WORD_LEN 2
 
 
 libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *image, size_t imageSize) {
@@ -952,20 +958,20 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
 
             size_t end{};
             NvU32 constant_nr = std::stoi(constant_nr_str, &end);
-            LIBRECUDA_VALIDATE(constant_nr_str[end] == '.', LIBRECUDA_ERROR_INVALID_IMAGE);
+            if (end != constant_nr_str.size()) {
+                std::string function_name = constant_nr_str.substr(end + 1);
 
-            std::string function_name = constant_nr_str.substr(end + 1);
+                auto &func_constants_list = constants[function_name];
 
-            auto &func_constants_list = constants[function_name];
-
-            auto const_info = KernelConstantInfo{
-                    .address=module_gpu_va + section->get_offset(),
-                    .size=section->get_size()
-            };
-            if (func_constants_list.size() < constant_nr + 1) {
-                func_constants_list.resize(constant_nr + 1);
+                auto const_info = KernelConstantInfo{
+                        .address=module_gpu_va + section->get_offset(),
+                        .size=section->get_size()
+                };
+                if (func_constants_list.size() < constant_nr + 1) {
+                    func_constants_list.resize(constant_nr + 1);
+                }
+                func_constants_list[constant_nr] = const_info;
             }
-            func_constants_list[constant_nr] = const_info;
         } else if (section_name == ".nv.info") {
             const char *data = section->get_data();
             for (int off = 0; off < section->get_size(); off += (sizeof(NvU32) * 3)) {
@@ -975,10 +981,25 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                 NvU32 value = line[2];
 
                 if ((type & 0xffff) == EIATTR_MIN_STACK_SIZE) {
-                    auto target = elf_reader.sections[func +
-                                                      5]; // ignores null section, .shstrtab, .strtab, .symtab & .debug_frame
-                    auto target_name = target->get_name();
+                    auto sym_tab = elf_reader.sections[symtab_idx];
+                    auto sym_tab_reader = ELFIO::symbol_section_accessor{elf_reader, sym_tab};
+                    size_t num_symbols = sym_tab_reader.get_symbols_num();
+                    std::string target_name{};
+                    for (int i = 0; i < num_symbols; i++) {
+                        std::string name{};
+                        ELFIO::Elf64_Addr sym_value{};
+                        ELFIO::Elf_Xword size{};
+                        unsigned char bind{};
+                        unsigned char sym_type{};
+                        ELFIO::Elf_Half section_index{};
+                        unsigned char other{};
+                        sym_tab_reader.get_symbol(i, name, sym_value, size, bind, sym_type, section_index, other);
 
+                        if (i == func) {
+                            target_name = name;
+                            break;
+                        }
+                    }
                     NvU32 local_mem_req = value + 0x240;
 
                     NvU32 max_local_mem_req = function_local_mem_reqs[target_name];
@@ -1022,6 +1043,14 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     }
                     case EIATTR_MAXREG_COUNT: {
                         off += (EIATTR_MAXREG_COUNT_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_EXTERNS: {
+                        off += (EIATTR_EXTERNS_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_SYSCALL_OFFSETS: {
+                        off += (EIATTR_SYSCALL_OFFSETS_ATTR_WORD_LEN * sizeof(NvU32));
                         break;
                     }
                     case EIATTR_SW2861232_WAR: {

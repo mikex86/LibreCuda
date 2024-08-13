@@ -87,8 +87,6 @@ struct LibreCUstream_ {
 };
 
 
-#define LIBRECUDA_DEBUG(msg) std::cerr << "[LibreCuda Debug]: " << msg << std::endl
-
 #define LIBRECUDA_VALIDATE_UVM_IOCTL(ret, data_ptr) {                                    \
     int return_value = ret;                                                              \
     int status = (data_ptr) != nullptr ? (data_ptr)->rmStatus : return_value;            \

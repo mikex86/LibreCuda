@@ -12,4 +12,5 @@ add_executable(LibreCuda
 
 target_link_libraries(LibreCuda PRIVATE elfio)
 
+# TODO: REMOVE WHEN CRUDE DEBUG MAIN GETS DELETED
 file(COPY ${CMAKE_SOURCE_DIR}/write_float.cubin DESTINATION ${CMAKE_BINARY_DIR})
