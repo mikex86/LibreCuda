@@ -5,7 +5,7 @@ include_directories(
         ${CMAKE_SOURCE_DIR}/src
 )
 
-if(NOT EXISTS ${CMAKE_SOURCE_DIR}/third_party/ELFIO)
+if(NOT EXISTS ${CMAKE_SOURCE_DIR}/third_party/ELFIO/elfio)
         message("ELFIO not found")
         execute_process(COMMAND git submodule update --init)
 else ()
