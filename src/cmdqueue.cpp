@@ -6,6 +6,7 @@
 
 #include "nvidia/clc6c0.h"
 #include "nvidia/clc6b5.h"
+#include "nvidia/clc46f.h"
 #include "nvidia/g_allclasses.h"
 
 #include "librecuda_internal.h"
@@ -41,17 +42,20 @@ NvCommandQueue::NvCommandQueue(LibreCUcontext ctx) : ctx(ctx) {
 
 }
 
-libreCudaStatus_t NvCommandQueue::submitToFifo(GPFifo &gpfifo, CommandQueuePage &page) {
+template<class T>
+libreCudaStatus_t NvCommandQueue::submitToDeviceSpecificFifo(GPFifo &gpfifo, CommandQueuePage &page) {
     LIBRECUDA_VALIDATE(page.commandQueueSpace != nullptr, LIBRECUDA_ERROR_NOT_INITIALIZED);
 
     if (commandBuffer.empty()) {
         return LIBRECUDA_SUCCESS; // don't do anything when command buffer is emtpy
     }
 
+    auto controls = reinterpret_cast<T *>(gpfifo.controls);
+
     if ((page.commandWriteIdx + commandBuffer.size()) > MAX_CMD_QUEUE_PAGE_SIZE) {
-        LIBRECUDA_VALIDATE(NvU64(gpfifo.ring[gpfifo.controls->GPGet] & 0xFFFFFFFFFC) >=
+        LIBRECUDA_VALIDATE(NvU64(gpfifo.ring[controls->GPGet] & 0xFFFFFFFFFC) >=
                            NvU64(page.commandQueueSpace + commandBuffer.size()) ||
-                           gpfifo.controls->GPGet == gpfifo.controls->GPPut, LIBRECUDA_ERROR_UNKNOWN);
+                           controls->GPGet == controls->GPPut, LIBRECUDA_ERROR_UNKNOWN);
         page.commandWriteIdx = 0;
     }
     memcpy(page.commandQueueSpace + page.commandWriteIdx, commandBuffer.data(), commandBuffer.size() * sizeof(NvU32));
@@ -61,13 +65,24 @@ libreCudaStatus_t NvCommandQueue::submitToFifo(GPFifo &gpfifo, CommandQueuePage 
             (commandBuffer.size() << 42) | (1l << 41);
     page.commandWriteIdx += commandBuffer.size();
 
-    gpfifo.controls->GPPut = (gpfifo.put_value + 1) % gpfifo.entries_count;
+    controls->GPPut = (gpfifo.put_value + 1) % gpfifo.entries_count;
     ctx->device->gpu_mmio[0x90 / 4] = gpfifo.token;
     gpfifo.put_value++;
 
     commandBuffer.clear();
 
     LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::submitToFifo(GPFifo &gpfifo, CommandQueuePage &page) {
+    switch (ctx->device->compute_class) {
+        case TURING_COMPUTE_A:
+            return submitToDeviceSpecificFifo<TuringAControlGPFifo>(gpfifo, page);
+        case AMPERE_COMPUTE_B:
+        case ADA_COMPUTE_A:
+            return submitToDeviceSpecificFifo<AmpereAControlGPFifo>(gpfifo, page);
+        default: LIBRECUDA_FAIL(LIBRECUDA_ERROR_COMPAT_NOT_SUPPORTED_ON_DEVICE);
+    }
 }
 
 libreCudaStatus_t NvCommandQueue::initializeQueue() {
@@ -133,7 +148,7 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
     // setup copy queue
     {
         LIBRECUDA_ERR_PROPAGATE(
-                enqueue(makeNvMethod(4, NVC6C0_SET_OBJECT, 1), {AMPERE_DMA_COPY_B})
+                enqueue(makeNvMethod(4, NVC6C0_SET_OBJECT, 1), {get_dma_copy_type(ctx->device->compute_class)})
         );
         timelineCtr++;
     }

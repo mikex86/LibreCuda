@@ -167,6 +167,9 @@ private:
 
     libreCudaStatus_t submitToFifo(GPFifo &gpfifo, CommandQueuePage &page);
 
+    template<class T>
+    libreCudaStatus_t submitToDeviceSpecificFifo(GPFifo &gpfifo, CommandQueuePage &page);
+
     libreCudaStatus_t allocKernArgs(NvU64 *pMemOut, size_t size);
 };
 

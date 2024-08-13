@@ -19,6 +19,7 @@
 #include "nvidia/ctrl2080gpu.h"
 
 #include "nvidia/clc56f.h"
+#include "nvidia/clc46f.h"
 #include "nvidia/g_allclasses.h"
 #include "nvidia/ctrl0080gpu.h"
 #include "nvidia/ctrlc36f.h"
@@ -239,6 +240,31 @@ NvU64 bump_alloc_virtual_addr(LibreCUcontext ctx, size_t size, NvU32 alignment =
     return va_address;
 }
 
+NvU32 get_fifo_channel(NvU32 computeClass) {
+    switch (computeClass) {
+        case TURING_COMPUTE_A:
+            return TURING_CHANNEL_GPFIFO_A;
+        case ADA_COMPUTE_A:
+        case AMPERE_COMPUTE_B:
+            return AMPERE_CHANNEL_GPFIFO_A;
+
+        default:
+            return 0;
+    }
+}
+
+NvU32 get_dma_copy_type(NvU32 computeClass) {
+    switch (computeClass) {
+        case TURING_COMPUTE_A:
+            return TURING_DMA_COPY_A;
+        case ADA_COMPUTE_A:
+        case AMPERE_COMPUTE_B:
+            return AMPERE_DMA_COPY_B;
+        default:
+            return 0;
+    }
+}
+
 libreCudaStatus_t
 makeGpuFifo(LibreCUcontext ctx,
             NvU64 gpfifoAreaVa, NvHandle gpfifoAreaHandle,
@@ -278,11 +304,12 @@ makeGpuFifo(LibreCUcontext ctx,
                         entries * 8 + offset
                 }
         };
-        RM_ALLOC(fd_ctl, AMPERE_CHANNEL_GPFIFO_A, root, channelGroup, 0, &params, sizeof(params), &gpfifo);
+        RM_ALLOC(fd_ctl, get_fifo_channel(ctx->device->compute_class), root, channelGroup, 0, &params, sizeof(params),
+                 &gpfifo);
     }
 
     RM_ALLOC(fd_ctl, ctx->device->compute_class, root, gpfifo, 0, nullptr, 0, nullptr);
-    RM_ALLOC(fd_ctl, AMPERE_DMA_COPY_B, root, gpfifo, 0, nullptr, 0, nullptr);
+    RM_ALLOC(fd_ctl, get_dma_copy_type(ctx->device->compute_class), root, gpfifo, 0, nullptr, 0, nullptr);
 
     // get work submit token
     NvU32 work_submit_token;
@@ -310,7 +337,7 @@ makeGpuFifo(LibreCUcontext ctx,
             .ring=reinterpret_cast<NvU64 *>(gpfifoAreaVa + offset),
             .entries_count=entries,
             .token=work_submit_token,
-            .controls = reinterpret_cast<AmpereAControlGPFifo *>(gpfifoAreaVa + offset + entries * 8)
+            .controls = reinterpret_cast<void *>(gpfifoAreaVa + offset + entries * 8)
     };
     *pGPFifoOut = fifo;
     LIBRECUDA_SUCCEED();
@@ -504,6 +531,7 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
         NvU32 compute_class = 0;
         for (NvU32 class_id: class_list) {
             switch (class_id) {
+                case TURING_COMPUTE_A:
                 case ADA_COMPUTE_A:
                 case AMPERE_COMPUTE_B:
                     compute_class = class_id;

@@ -18,7 +18,7 @@ struct GPFifo {
     NvU64 *ring;
     NvU32 entries_count;
     NvU32 token;
-    AmpereAControlGPFifo *controls;
+    void *controls;
     NvU32 put_value = 0;
 };
 
@@ -164,5 +164,9 @@ gpuSystemAlloc(LibreCUcontext ctx, size_t size, bool mapToCpu, NvU32 mapFlags,
                NvU64 *pVaOut, NvHandle *pMemoryHandleOut = nullptr);
 
 libreCudaStatus_t gpuFree(LibreCUcontext ctx, NvU64 virtualAddress);
+
+NvU32 get_fifo_channel(NvU32 computeClass);
+NvU32 get_dma_copy_type(NvU32 computeClass);
+
 
 #endif //LIBRECUDA_LIBRECUDA_INTERNAL_H
