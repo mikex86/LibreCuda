@@ -5,6 +5,13 @@ include_directories(
         ${CMAKE_SOURCE_DIR}/src
 )
 
+if(NOT EXISTS ${CMAKE_SOURCE_DIR}/third_party/ELFIO)
+        message("ELFIO not found")
+        execute_process(COMMAND git submodule update --init)
+else ()
+        message("ELFIO found.")
+endif()
+
 # create elf-parser library
 add_subdirectory(third_party/ELFIO)
 add_subdirectory(src)
