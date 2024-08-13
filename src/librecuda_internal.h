@@ -150,7 +150,7 @@ static inline libreCudaStatus_t rm_ctrl(int fd,
                                         NvHandle client, NvHandle object,
                                         void *params, NvU32 paramSize);
 
-#define LIBRECUDA_VALIDATE_RM_CTRL(status) { if (status != LIBRECUDA_SUCCESS) { LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
+#define LIBRECUDA_VALIDATE_RM_CTRL(status) { if (status != LIBRECUDA_SUCCESS) { LIBRECUDA_DEBUG(__FILE__ ":" TOSTRING(__LINE__) ": RM_CTRL failed with status " #status); LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
 
 #define RM_CTRL(fd, cmd, client, object, params, paramSize) LIBRECUDA_VALIDATE_RM_CTRL(rm_ctrl(fd, cmd, client, object, params, paramSize))
 
