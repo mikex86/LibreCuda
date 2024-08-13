@@ -806,7 +806,10 @@ struct RelocInfo {
 #define EIATTR_MAXREG_COUNT_ATTR_WORD_LEN 4
 
 #define EIATTR_EXIT_INSTR_OFFSETS 0x1c04
-#define EIATTR_EXIT_INSTR_ATTR_WORD_LEN 4
+#define EIATTR_EXIT_INSTR_OFFSETS_ATTR_WORD_LEN 4
+
+#define EIATTR_SW2861232_WAR 0x3501
+#define EIATTR_SW2861232_ATTR_WORD_LEN 1
 
 
 libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *image, size_t imageSize) {
@@ -986,7 +989,8 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             auto target_function_name = section_name.substr(9);
             const char *data = section->get_data();
 
-            for (int off = 0; off < section->get_size();) {
+            int off;
+            for (off = 0; off < section->get_size();) {
                 const auto *line = reinterpret_cast<const NvU32 *>(data + off);
                 NvU32 key = line[0];
                 NvU16 type = key & 0xffff;
@@ -1020,8 +1024,12 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         off += (EIATTR_MAXREG_COUNT_ATTR_WORD_LEN * sizeof(NvU32));
                         break;
                     }
+                    case EIATTR_SW2861232_WAR: {
+                        off += (EIATTR_SW2861232_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
                     case EIATTR_EXIT_INSTR_OFFSETS: {
-                        off += (EIATTR_EXIT_INSTR_OFFSETS * sizeof(NvU32));
+                        off += (EIATTR_EXIT_INSTR_OFFSETS_ATTR_WORD_LEN * sizeof(NvU32));
                         break;
                     }
                     default: {
