@@ -5,31 +5,30 @@
 //--------------------- .debug_frame              --------------------------
 	.section	.debug_frame,"",@progbits
 .debug_frame:
-        /*0000*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff
+        /*0000*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff
         /*0010*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x03, 0x00, 0x04, 0x7c, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0c, 0x81, 0x80
         /*0020*/ 	.byte	0x80, 0x28, 0x00, 0x08, 0xff, 0x81, 0x80, 0x28, 0x08, 0x81, 0x80, 0x80, 0x28, 0x00, 0x00, 0x00
-        /*0030*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        /*0040*/ 	.byte	0x00, 0x00, 0x00, 0x00
-        /*0044*/ 	.dword	write_float_sum
-        /*004c*/ 	.byte	0x80, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x20, 0x00
-        /*005c*/ 	.byte	0x00, 0x00, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x04, 0xfc, 0xff, 0xff, 0x3f, 0x00, 0x00, 0x00
-        /*006c*/ 	.byte	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        /*007c*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x03, 0x00, 0x04, 0x7c, 0xff, 0xff, 0xff, 0xff
-        /*008c*/ 	.byte	0x0f, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x08, 0xff, 0x81, 0x80, 0x28, 0x08, 0x81, 0x80, 0x80
-        /*009c*/ 	.byte	0x28, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        /*00ac*/ 	.byte	0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        /*00b4*/ 	.dword	write_float_value
-        /*00bc*/ 	.byte	0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x18, 0x00
-        /*00cc*/ 	.byte	0x00, 0x00, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x04, 0xfc, 0xff, 0xff, 0x3f, 0x00, 0x00, 0x00
-        /*00dc*/ 	.byte	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        /*00ec*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x03, 0x00, 0x04, 0x7c, 0xff, 0xff, 0xff, 0xff
-        /*00fc*/ 	.byte	0x0f, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x08, 0xff, 0x81, 0x80, 0x28, 0x08, 0x81, 0x80, 0x80
-        /*010c*/ 	.byte	0x28, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        /*011c*/ 	.byte	0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        /*0124*/ 	.dword	write_float_ptr
-        /*012c*/ 	.byte	0x80, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x20, 0x00
-        /*013c*/ 	.byte	0x00, 0x00, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x04, 0xfc, 0xff, 0xff, 0x3f, 0x00, 0x00, 0x00
-        /*014c*/ 	.byte	0x00, 0x00, 0x00, 0x00
+        /*0030*/ 	.byte	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        /*0040*/ 	.byte	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        /*0048*/ 	.dword	write_float_sum
+        /*0050*/ 	.byte	0x70, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x20, 0x00
+        /*0060*/ 	.byte	0x00, 0x00, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x04, 0xfc, 0xff, 0xff, 0x3f, 0x00, 0x00, 0x00
+        /*0070*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff
+        /*0080*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x03, 0x00, 0x04, 0x7c, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0c, 0x81, 0x80
+        /*0090*/ 	.byte	0x80, 0x28, 0x00, 0x08, 0xff, 0x81, 0x80, 0x28, 0x08, 0x81, 0x80, 0x80, 0x28, 0x00, 0x00, 0x00
+        /*00a0*/ 	.byte	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        /*00b0*/ 	.byte	0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        /*00b8*/ 	.dword	write_float_value
+        /*00c0*/ 	.byte	0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x18, 0x00
+        /*00d0*/ 	.byte	0x00, 0x00, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x04, 0xfc, 0xff, 0xff, 0x3f, 0x00, 0x00, 0x00
+        /*00e0*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff
+        /*00f0*/ 	.byte	0xff, 0xff, 0xff, 0xff, 0x03, 0x00, 0x04, 0x7c, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0c, 0x81, 0x80
+        /*0100*/ 	.byte	0x80, 0x28, 0x00, 0x08, 0xff, 0x81, 0x80, 0x28, 0x08, 0x81, 0x80, 0x80, 0x28, 0x00, 0x00, 0x00
+        /*0110*/ 	.byte	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        /*0120*/ 	.byte	0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        /*0128*/ 	.dword	write_float_ptr
+        /*0130*/ 	.byte	0x70, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x04, 0x20, 0x00
+        /*0140*/ 	.byte	0x00, 0x00, 0x0c, 0x81, 0x80, 0x80, 0x28, 0x00, 0x04, 0xfc, 0xff, 0xff, 0x3f, 0x00, 0x00, 0x00
 
 
 //--------------------- .nv.info                  --------------------------
@@ -40,152 +39,151 @@
 	//----- nvinfo : EIATTR_REGCOUNT
 	.align		4
         /*0000*/ 	.byte	0x04, 0x2f
-        /*0002*/ 	.short	(.L_1 - .L_0)
+        /*0002*/ 	.short	(.L_2 - .L_1)
 	.align		4
-.L_0:
+.L_1:
         /*0004*/ 	.word	index@(write_float_ptr)
         /*0008*/ 	.word	0x00000008
 
 
-	//----- nvinfo : EIATTR_MIN_STACK_SIZE
-	.align		4
-.L_1:
-        /*000c*/ 	.byte	0x04, 0x12
-        /*000e*/ 	.short	(.L_3 - .L_2)
+	//----- nvinfo : EIATTR_MAX_STACK_SIZE
 	.align		4
 .L_2:
+        /*000c*/ 	.byte	0x04, 0x23
+        /*000e*/ 	.short	(.L_4 - .L_3)
+	.align		4
+.L_3:
         /*0010*/ 	.word	index@(write_float_ptr)
         /*0014*/ 	.word	0x00000000
 
 
-	//----- nvinfo : EIATTR_FRAME_SIZE
-	.align		4
-.L_3:
-        /*0018*/ 	.byte	0x04, 0x11
-        /*001a*/ 	.short	(.L_5 - .L_4)
+	//----- nvinfo : EIATTR_MIN_STACK_SIZE
 	.align		4
 .L_4:
+        /*0018*/ 	.byte	0x04, 0x12
+        /*001a*/ 	.short	(.L_6 - .L_5)
+	.align		4
+.L_5:
         /*001c*/ 	.word	index@(write_float_ptr)
         /*0020*/ 	.word	0x00000000
 
 
-	//----- nvinfo : EIATTR_REGCOUNT
-	.align		4
-.L_5:
-        /*0024*/ 	.byte	0x04, 0x2f
-        /*0026*/ 	.short	(.L_7 - .L_6)
-	.align		4
-.L_6:
-        /*0028*/ 	.word	index@(write_float_value)
-        /*002c*/ 	.word	0x00000008
-
-
-	//----- nvinfo : EIATTR_MIN_STACK_SIZE
-	.align		4
-.L_7:
-        /*0030*/ 	.byte	0x04, 0x12
-        /*0032*/ 	.short	(.L_9 - .L_8)
-	.align		4
-.L_8:
-        /*0034*/ 	.word	index@(write_float_value)
-        /*0038*/ 	.word	0x00000000
-
-
 	//----- nvinfo : EIATTR_FRAME_SIZE
 	.align		4
+.L_6:
+        /*0024*/ 	.byte	0x04, 0x11
+        /*0026*/ 	.short	(.L_8 - .L_7)
+	.align		4
+.L_7:
+        /*0028*/ 	.word	index@(write_float_ptr)
+        /*002c*/ 	.word	0x00000000
+
+
+	//----- nvinfo : EIATTR_REGCOUNT
+	.align		4
+.L_8:
+        /*0030*/ 	.byte	0x04, 0x2f
+        /*0032*/ 	.short	(.L_10 - .L_9)
+	.align		4
 .L_9:
-        /*003c*/ 	.byte	0x04, 0x11
-        /*003e*/ 	.short	(.L_11 - .L_10)
+        /*0034*/ 	.word	index@(write_float_value)
+        /*0038*/ 	.word	0x00000008
+
+
+	//----- nvinfo : EIATTR_MAX_STACK_SIZE
 	.align		4
 .L_10:
+        /*003c*/ 	.byte	0x04, 0x23
+        /*003e*/ 	.short	(.L_12 - .L_11)
+	.align		4
+.L_11:
         /*0040*/ 	.word	index@(write_float_value)
         /*0044*/ 	.word	0x00000000
 
 
-	//----- nvinfo : EIATTR_REGCOUNT
-	.align		4
-.L_11:
-        /*0048*/ 	.byte	0x04, 0x2f
-        /*004a*/ 	.short	(.L_13 - .L_12)
-	.align		4
-.L_12:
-        /*004c*/ 	.word	index@(write_float_sum)
-        /*0050*/ 	.word	0x00000008
-
-
 	//----- nvinfo : EIATTR_MIN_STACK_SIZE
 	.align		4
-.L_13:
-        /*0054*/ 	.byte	0x04, 0x12
-        /*0056*/ 	.short	(.L_15 - .L_14)
+.L_12:
+        /*0048*/ 	.byte	0x04, 0x12
+        /*004a*/ 	.short	(.L_14 - .L_13)
 	.align		4
-.L_14:
-        /*0058*/ 	.word	index@(write_float_sum)
-        /*005c*/ 	.word	0x00000000
+.L_13:
+        /*004c*/ 	.word	index@(write_float_value)
+        /*0050*/ 	.word	0x00000000
 
 
 	//----- nvinfo : EIATTR_FRAME_SIZE
 	.align		4
+.L_14:
+        /*0054*/ 	.byte	0x04, 0x11
+        /*0056*/ 	.short	(.L_16 - .L_15)
+	.align		4
 .L_15:
-        /*0060*/ 	.byte	0x04, 0x11
-        /*0062*/ 	.short	(.L_17 - .L_16)
+        /*0058*/ 	.word	index@(write_float_value)
+        /*005c*/ 	.word	0x00000000
+
+
+	//----- nvinfo : EIATTR_REGCOUNT
 	.align		4
 .L_16:
-        /*0064*/ 	.word	index@(write_float_sum)
-        /*0068*/ 	.word	0x00000000
-
-
-	//----- nvinfo : EIATTR_MIN_STACK_SIZE
+        /*0060*/ 	.byte	0x04, 0x2f
+        /*0062*/ 	.short	(.L_18 - .L_17)
 	.align		4
 .L_17:
-        /*006c*/ 	.byte	0x04, 0x12
-        /*006e*/ 	.short	(.L_19 - .L_18)
+        /*0064*/ 	.word	index@(write_float_sum)
+        /*0068*/ 	.word	0x00000008
+
+
+	//----- nvinfo : EIATTR_MAX_STACK_SIZE
 	.align		4
 .L_18:
+        /*006c*/ 	.byte	0x04, 0x23
+        /*006e*/ 	.short	(.L_20 - .L_19)
+	.align		4
+.L_19:
         /*0070*/ 	.word	index@(write_float_sum)
         /*0074*/ 	.word	0x00000000
 
 
 	//----- nvinfo : EIATTR_MIN_STACK_SIZE
 	.align		4
-.L_19:
-        /*0078*/ 	.byte	0x04, 0x12
-        /*007a*/ 	.short	(.L_21 - .L_20)
-	.align		4
 .L_20:
-        /*007c*/ 	.word	index@(write_float_value)
+        /*0078*/ 	.byte	0x04, 0x12
+        /*007a*/ 	.short	(.L_22 - .L_21)
+	.align		4
+.L_21:
+        /*007c*/ 	.word	index@(write_float_sum)
         /*0080*/ 	.word	0x00000000
 
 
-	//----- nvinfo : EIATTR_MIN_STACK_SIZE
-	.align		4
-.L_21:
-        /*0084*/ 	.byte	0x04, 0x12
-        /*0086*/ 	.short	(.L_23 - .L_22)
+	//----- nvinfo : EIATTR_FRAME_SIZE
 	.align		4
 .L_22:
-        /*0088*/ 	.word	index@(write_float_ptr)
-        /*008c*/ 	.word	0x00000000
+        /*0084*/ 	.byte	0x04, 0x11
+        /*0086*/ 	.short	(.L_24 - .L_23)
+	.align		4
 .L_23:
+        /*0088*/ 	.word	index@(write_float_sum)
+        /*008c*/ 	.word	0x00000000
+.L_24:
 
 
 //--------------------- .nv.info.write_float_sum  --------------------------
 	.section	.nv.info.write_float_sum,"",@"SHT_CUDA_INFO"
-	.sectionflags	@""
 	.align	4
 
 
 	//----- nvinfo : EIATTR_CUDA_API_VERSION
 	.align		4
         /*0000*/ 	.byte	0x04, 0x37
-        /*0002*/ 	.short	(.L_25 - .L_24)
-.L_24:
-        /*0004*/ 	.word	0x0000007c
+        /*0002*/ 	.short	(.L_26 - .L_25)
+.L_25:
+        /*0004*/ 	.word	0x00000073
 
 
 	//----- nvinfo : EIATTR_SW2861232_WAR
 	.align		4
-.L_25:
+.L_26:
         /*0008*/ 	.byte	0x01, 0x35
 	.zero		2
 
@@ -193,9 +191,9 @@
 	//----- nvinfo : EIATTR_PARAM_CBANK
 	.align		4
         /*000c*/ 	.byte	0x04, 0x0a
-        /*000e*/ 	.short	(.L_27 - .L_26)
+        /*000e*/ 	.short	(.L_28 - .L_27)
 	.align		4
-.L_26:
+.L_27:
         /*0010*/ 	.word	index@(.nv.constant0.write_float_sum)
         /*0014*/ 	.short	0x0160
         /*0016*/ 	.short	0x0010
@@ -203,7 +201,7 @@
 
 	//----- nvinfo : EIATTR_CBANK_PARAM_SIZE
 	.align		4
-.L_27:
+.L_28:
         /*0018*/ 	.byte	0x03, 0x19
         /*001a*/ 	.short	0x0010
 
@@ -211,8 +209,8 @@
 	//----- nvinfo : EIATTR_KPARAM_INFO
 	.align		4
         /*001c*/ 	.byte	0x04, 0x17
-        /*001e*/ 	.short	(.L_29 - .L_28)
-.L_28:
+        /*001e*/ 	.short	(.L_30 - .L_29)
+.L_29:
         /*0020*/ 	.word	0x00000000
         /*0024*/ 	.short	0x0002
         /*0026*/ 	.short	0x000c
@@ -221,10 +219,10 @@
 
 	//----- nvinfo : EIATTR_KPARAM_INFO
 	.align		4
-.L_29:
-        /*002c*/ 	.byte	0x04, 0x17
-        /*002e*/ 	.short	(.L_31 - .L_30)
 .L_30:
+        /*002c*/ 	.byte	0x04, 0x17
+        /*002e*/ 	.short	(.L_32 - .L_31)
+.L_31:
         /*0030*/ 	.word	0x00000000
         /*0034*/ 	.short	0x0001
         /*0036*/ 	.short	0x0008
@@ -233,10 +231,10 @@
 
 	//----- nvinfo : EIATTR_KPARAM_INFO
 	.align		4
-.L_31:
-        /*003c*/ 	.byte	0x04, 0x17
-        /*003e*/ 	.short	(.L_33 - .L_32)
 .L_32:
+        /*003c*/ 	.byte	0x04, 0x17
+        /*003e*/ 	.short	(.L_34 - .L_33)
+.L_33:
         /*0040*/ 	.word	0x00000000
         /*0044*/ 	.short	0x0000
         /*0046*/ 	.short	0x0000
@@ -245,7 +243,7 @@
 
 	//----- nvinfo : EIATTR_MAXREG_COUNT
 	.align		4
-.L_33:
+.L_34:
         /*004c*/ 	.byte	0x03, 0x1b
         /*004e*/ 	.short	0x00ff
 
@@ -253,32 +251,31 @@
 	//----- nvinfo : EIATTR_EXIT_INSTR_OFFSETS
 	.align		4
         /*0050*/ 	.byte	0x04, 0x1c
-        /*0052*/ 	.short	(.L_35 - .L_34)
+        /*0052*/ 	.short	(.L_36 - .L_35)
 
 
 	//   ....[0]....
-.L_34:
-        /*0054*/ 	.word	0x00000080
 .L_35:
+        /*0054*/ 	.word	0x00000080
+.L_36:
 
 
 //--------------------- .nv.info.write_float_value --------------------------
 	.section	.nv.info.write_float_value,"",@"SHT_CUDA_INFO"
-	.sectionflags	@""
 	.align	4
 
 
 	//----- nvinfo : EIATTR_CUDA_API_VERSION
 	.align		4
         /*0000*/ 	.byte	0x04, 0x37
-        /*0002*/ 	.short	(.L_37 - .L_36)
-.L_36:
-        /*0004*/ 	.word	0x0000007c
+        /*0002*/ 	.short	(.L_38 - .L_37)
+.L_37:
+        /*0004*/ 	.word	0x00000073
 
 
 	//----- nvinfo : EIATTR_SW2861232_WAR
 	.align		4
-.L_37:
+.L_38:
         /*0008*/ 	.byte	0x01, 0x35
 	.zero		2
 
@@ -286,9 +283,9 @@
 	//----- nvinfo : EIATTR_PARAM_CBANK
 	.align		4
         /*000c*/ 	.byte	0x04, 0x0a
-        /*000e*/ 	.short	(.L_39 - .L_38)
+        /*000e*/ 	.short	(.L_40 - .L_39)
 	.align		4
-.L_38:
+.L_39:
         /*0010*/ 	.word	index@(.nv.constant0.write_float_value)
         /*0014*/ 	.short	0x0160
         /*0016*/ 	.short	0x000c
@@ -296,7 +293,7 @@
 
 	//----- nvinfo : EIATTR_CBANK_PARAM_SIZE
 	.align		4
-.L_39:
+.L_40:
         /*0018*/ 	.byte	0x03, 0x19
         /*001a*/ 	.short	0x000c
 
@@ -304,8 +301,8 @@
 	//----- nvinfo : EIATTR_KPARAM_INFO
 	.align		4
         /*001c*/ 	.byte	0x04, 0x17
-        /*001e*/ 	.short	(.L_41 - .L_40)
-.L_40:
+        /*001e*/ 	.short	(.L_42 - .L_41)
+.L_41:
         /*0020*/ 	.word	0x00000000
         /*0024*/ 	.short	0x0001
         /*0026*/ 	.short	0x0008
@@ -314,10 +311,10 @@
 
 	//----- nvinfo : EIATTR_KPARAM_INFO
 	.align		4
-.L_41:
-        /*002c*/ 	.byte	0x04, 0x17
-        /*002e*/ 	.short	(.L_43 - .L_42)
 .L_42:
+        /*002c*/ 	.byte	0x04, 0x17
+        /*002e*/ 	.short	(.L_44 - .L_43)
+.L_43:
         /*0030*/ 	.word	0x00000000
         /*0034*/ 	.short	0x0000
         /*0036*/ 	.short	0x0000
@@ -326,7 +323,7 @@
 
 	//----- nvinfo : EIATTR_MAXREG_COUNT
 	.align		4
-.L_43:
+.L_44:
         /*003c*/ 	.byte	0x03, 0x1b
         /*003e*/ 	.short	0x00ff
 
@@ -334,32 +331,31 @@
 	//----- nvinfo : EIATTR_EXIT_INSTR_OFFSETS
 	.align		4
         /*0040*/ 	.byte	0x04, 0x1c
-        /*0042*/ 	.short	(.L_45 - .L_44)
+        /*0042*/ 	.short	(.L_46 - .L_45)
 
 
 	//   ....[0]....
-.L_44:
-        /*0044*/ 	.word	0x00000060
 .L_45:
+        /*0044*/ 	.word	0x00000060
+.L_46:
 
 
 //--------------------- .nv.info.write_float_ptr  --------------------------
 	.section	.nv.info.write_float_ptr,"",@"SHT_CUDA_INFO"
-	.sectionflags	@""
 	.align	4
 
 
 	//----- nvinfo : EIATTR_CUDA_API_VERSION
 	.align		4
         /*0000*/ 	.byte	0x04, 0x37
-        /*0002*/ 	.short	(.L_47 - .L_46)
-.L_46:
-        /*0004*/ 	.word	0x0000007c
+        /*0002*/ 	.short	(.L_48 - .L_47)
+.L_47:
+        /*0004*/ 	.word	0x00000073
 
 
 	//----- nvinfo : EIATTR_SW2861232_WAR
 	.align		4
-.L_47:
+.L_48:
         /*0008*/ 	.byte	0x01, 0x35
 	.zero		2
 
@@ -367,9 +363,9 @@
 	//----- nvinfo : EIATTR_PARAM_CBANK
 	.align		4
         /*000c*/ 	.byte	0x04, 0x0a
-        /*000e*/ 	.short	(.L_49 - .L_48)
+        /*000e*/ 	.short	(.L_50 - .L_49)
 	.align		4
-.L_48:
+.L_49:
         /*0010*/ 	.word	index@(.nv.constant0.write_float_ptr)
         /*0014*/ 	.short	0x0160
         /*0016*/ 	.short	0x0010
@@ -377,7 +373,7 @@
 
 	//----- nvinfo : EIATTR_CBANK_PARAM_SIZE
 	.align		4
-.L_49:
+.L_50:
         /*0018*/ 	.byte	0x03, 0x19
         /*001a*/ 	.short	0x0010
 
@@ -385,8 +381,8 @@
 	//----- nvinfo : EIATTR_KPARAM_INFO
 	.align		4
         /*001c*/ 	.byte	0x04, 0x17
-        /*001e*/ 	.short	(.L_51 - .L_50)
-.L_50:
+        /*001e*/ 	.short	(.L_52 - .L_51)
+.L_51:
         /*0020*/ 	.word	0x00000000
         /*0024*/ 	.short	0x0001
         /*0026*/ 	.short	0x0008
@@ -395,10 +391,10 @@
 
 	//----- nvinfo : EIATTR_KPARAM_INFO
 	.align		4
-.L_51:
-        /*002c*/ 	.byte	0x04, 0x17
-        /*002e*/ 	.short	(.L_53 - .L_52)
 .L_52:
+        /*002c*/ 	.byte	0x04, 0x17
+        /*002e*/ 	.short	(.L_54 - .L_53)
+.L_53:
         /*0030*/ 	.word	0x00000000
         /*0034*/ 	.short	0x0000
         /*0036*/ 	.short	0x0000
@@ -407,7 +403,7 @@
 
 	//----- nvinfo : EIATTR_MAXREG_COUNT
 	.align		4
-.L_53:
+.L_54:
         /*003c*/ 	.byte	0x03, 0x1b
         /*003e*/ 	.short	0x00ff
 
@@ -415,47 +411,37 @@
 	//----- nvinfo : EIATTR_EXIT_INSTR_OFFSETS
 	.align		4
         /*0040*/ 	.byte	0x04, 0x1c
-        /*0042*/ 	.short	(.L_55 - .L_54)
+        /*0042*/ 	.short	(.L_56 - .L_55)
 
 
 	//   ....[0]....
-.L_54:
-        /*0044*/ 	.word	0x00000080
 .L_55:
-
-
-//--------------------- .nv.callgraph             --------------------------
-	.section	.nv.callgraph,"",@"SHT_CUDA_CALLGRAPH"
-	.align	4
-	.sectionentsize	8
-	.align		4
-        /*0000*/ 	.word	0x00000000
-	.align		4
-        /*0004*/ 	.word	0xffffffff
-	.align		4
-        /*0008*/ 	.word	0x00000000
-	.align		4
-        /*000c*/ 	.word	0xfffffffe
-	.align		4
-        /*0010*/ 	.word	0x00000000
-	.align		4
-        /*0014*/ 	.word	0xfffffffd
-	.align		4
-        /*0018*/ 	.word	0x00000000
-	.align		4
-        /*001c*/ 	.word	0xfffffffc
+        /*0044*/ 	.word	0x00000080
+.L_56:
 
 
 //--------------------- .nv.rel.action            --------------------------
 	.section	.nv.rel.action,"",@"SHT_CUDA_RELOCINFO"
 	.align	8
 	.sectionentsize	8
-        /*0000*/ 	.byte	0x73, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x25, 0x00, 0x05, 0x36
+        /*0000*/ 	.byte	0x4b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02, 0x08, 0x10, 0x0a, 0x2f, 0x22
+        /*0010*/ 	.byte	0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0020*/ 	.byte	0x00, 0x00, 0x10, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0030*/ 	.byte	0x00, 0x00, 0x20, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0040*/ 	.byte	0x00, 0x00, 0x30, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0050*/ 	.byte	0x01, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0060*/ 	.byte	0x01, 0x00, 0x10, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x18, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0070*/ 	.byte	0x01, 0x00, 0x20, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x28, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0080*/ 	.byte	0x01, 0x00, 0x30, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x38, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*0090*/ 	.byte	0x02, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*00a0*/ 	.byte	0x02, 0x00, 0x10, 0x08, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x18, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*00b0*/ 	.byte	0x02, 0x00, 0x20, 0x08, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x28, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*00c0*/ 	.byte	0x02, 0x00, 0x30, 0x08, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x38, 0x08, 0x00, 0x00, 0x00, 0x00
+        /*00d0*/ 	.byte	0x00, 0x00, 0x00, 0x14, 0x2c, 0x00, 0x00, 0x00
 
 
 //--------------------- .nv.constant0.write_float_sum --------------------------
 	.section	.nv.constant0.write_float_sum,"a",@progbits
-	.sectionflags	@""
 	.align	4
 .nv.constant0.write_float_sum:
 	.zero		368
@@ -463,7 +449,6 @@
 
 //--------------------- .nv.constant0.write_float_value --------------------------
 	.section	.nv.constant0.write_float_value,"a",@progbits
-	.sectionflags	@""
 	.align	4
 .nv.constant0.write_float_value:
 	.zero		364
@@ -471,7 +456,6 @@
 
 //--------------------- .nv.constant0.write_float_ptr --------------------------
 	.section	.nv.constant0.write_float_ptr,"a",@progbits
-	.sectionflags	@""
 	.align	4
 .nv.constant0.write_float_ptr:
 	.zero		368
