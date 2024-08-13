@@ -136,13 +136,12 @@ static inline libreCudaStatus_t rm_alloc(int fd, NvV32 clss,
         *pObjectNew = parameters.hObjectNew;
     }
     if (parameters.status != 0) {
-        LIBRECUDA_DEBUG("rm_alloc failed with status: " + std::to_string(parameters.status));
         LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN);
     }
     LIBRECUDA_SUCCEED();
 }
 
-#define LIBRECUDA_VALIDATE_RM_ALLOC(status) { if (status != LIBRECUDA_SUCCESS) { LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
+#define LIBRECUDA_VALIDATE_RM_ALLOC(status) { if (status != LIBRECUDA_SUCCESS) { LIBRECUDA_DEBUG(__FILE__ ":" TOSTRING(__LINE__) ": RM_ALLOC failed with status " #status); LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
 
 #define RM_ALLOC(fd, clss, client, parent, object, params, param_size, pObjectNew) LIBRECUDA_VALIDATE_RM_ALLOC(rm_alloc(fd, clss, client, parent, object, params, param_size, pObjectNew));
 
