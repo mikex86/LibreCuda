@@ -1,7 +1,7 @@
 #! /bin/bash
 compile_cubin() {
     if [ -z "$1" ]; then
-        echo "Usage: ./compile_cubin.sh <filename_base>. (e.g ./compile_cubin.sh write_float)"
+        echo "Usage: ./compile_cubin.sh <filename_base>. (e.g ./compile_cubin.sh write_float/write_float)"
         return 1
     fi
 
