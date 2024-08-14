@@ -8,6 +8,6 @@ set(
 add_library(driverapi SHARED ${DRIVERAPI_SOURCES})
 target_include_directories(
     driverapi PUBLIC 
-    include/
-    internal/)
+    "include/"
+    "internal/")
 target_link_libraries(driverapi PRIVATE elfio)
