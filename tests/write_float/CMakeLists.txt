@@ -1,13 +1,10 @@
 add_executable(
-    main
+    test_write_float
     main.cpp 
 )
-target_include_directories(
-    main 
-    PUBLIC
-    ${CMAKE_SOURCE_DIR}/include
-)
 target_link_libraries(
-    main 
+    test_write_float 
     driverapi
 )
+
+file(COPY ${CMAKE_SOURCE_DIR}/tests/write_float/write_float.cubin DESTINATION ${CMAKE_BINARY_DIR}/bin)
