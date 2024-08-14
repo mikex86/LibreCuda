@@ -18,7 +18,7 @@ typedef int libreCudaStatus_t;
 
 // declare all cuda error codes
 #define LIBRECUDA_DECLARE_STATUS(status, code) extern "C" libreCudaStatus_t status;
-#include "librecuda_all_statuess.h"
+#include "librecuda_all_statuses.h"
 #undef LIBRECUDA_DECLARE_STATUS
 
 #define LIBRECUDA_SUCCEED() { return LIBRECUDA_SUCCESS; }

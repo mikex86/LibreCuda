@@ -6,7 +6,7 @@
 
 #define LIBRECUDA_DECLARE_STATUS(status, code) libreCudaStatus_t status = code;
 
-#include "librecuda_all_statuess.h"
+#include "librecuda_all_statuses.h"
 
 #undef LIBRECUDA_DECLARE_STATUS
 
@@ -18,7 +18,7 @@ void internalLibreCuInitStatusNames() {
 
 #define LIBRECUDA_DECLARE_STATUS(status, code) status_to_name[code] = #status;
 
-#include "librecuda_all_statuess.h"
+#include "librecuda_all_statuses.h"
 
 #undef LIBRECUDA_DECLARE_STATUS
 
