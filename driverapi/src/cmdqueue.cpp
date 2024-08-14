@@ -574,14 +574,13 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
 
         // setup constant buffers
         const auto &constants = function->constants;
-        for (size_t i = 0; i < constants.size(); i++) {
-            auto &constant_info = constants[i];
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER(i), , , U64_HI_32_BITS(constant_info.address),
+        for (auto constant_info : constants) {
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER(constant_info.const_nr), , , U64_HI_32_BITS(constant_info.address),
                                qmd_data);
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER(i), , , U64_LO_32_BITS(constant_info.address),
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER(constant_info.const_nr), , , U64_LO_32_BITS(constant_info.address),
                                qmd_data);
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_SIZE_SHIFTED4(i), , , constant_info.size, qmd_data);
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_VALID(i), , , NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID_TRUE,
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_SIZE_SHIFTED4(constant_info.const_nr), , , constant_info.size, qmd_data);
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_VALID(constant_info.const_nr), , , NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID_TRUE,
                                qmd_data);
         }
 

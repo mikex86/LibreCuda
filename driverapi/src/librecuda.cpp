@@ -233,6 +233,10 @@ static inline NvU32 maxOf(NvU32 a, NvU32 b) {
     return (a > b) ? a : b;
 }
 
+static inline NvU64 maxOf(NvU64 a, NvU64 b) {
+    return (a > b) ? a : b;
+}
+
 NvU64 bump_alloc_virtual_addr(LibreCUcontext ctx, size_t size, NvU32 alignment = 4 << 10) {
     NvU64 va_address = ceilDiv(ctx->uvm_vaddr, alignment) * alignment;
     ctx->uvm_vaddr = va_address + size;
@@ -832,11 +836,62 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
         elf_reader.load(istream);
     }
 
+    // rebuild image with sections aligned to 128
+    uint8_t *rebuilt_image;
+    size_t rebuilt_image_size;
+    {
+        NvU32 force_section_align = 128;
+
+        std::vector<uint8_t> image_data{};
+        // reserve for fixed address sections
+        {
+            size_t num_bytes_fixed = 0;
+            for (const auto &section: elf_reader.sections) {
+                if (section->get_type() == ELFIO::SHT_PROGBITS &&
+                    section->get_address() != 0) {
+                    num_bytes_fixed = maxOf(num_bytes_fixed,
+                                            NvU64(uint64_t(section->get_address() + section->get_size())));
+                }
+            }
+            image_data.resize(num_bytes_fixed);
+            for (const auto &section: elf_reader.sections) {
+                if (section->get_type() != ELFIO::SHT_PROGBITS) {
+                    continue;
+                }
+                if (section->get_address() != 0) {
+                    // copy section at right position
+                    for (size_t i = 0; i < section->get_size(); i++) {
+                        image_data[section->get_address() + i] = section->get_data()[i];
+                    }
+                } else {
+                    // insert padding
+                    NvU32 align = maxOf(section->get_addr_align(), force_section_align);
+                    size_t num_padding_bytes = ((align - image_data.size()) % align);
+                    image_data.resize(image_data.size() + num_padding_bytes);
+
+                    // insert rest of the section
+                    image_data.reserve(section->get_size());
+                    for (size_t i = 0; i < section->get_size(); i++) {
+                        image_data.push_back(section->get_data()[i]);
+                    }
+                    section->set_address(image_data.size() - section->get_size());
+                }
+            }
+        }
+
+        // copy to image ptr
+        {
+            rebuilt_image_size = image_data.size();
+            rebuilt_image = new uint8_t[rebuilt_image_size];
+            memcpy(rebuilt_image, image_data.data(), image_data.size());
+        }
+    }
+
     // allocate memory for the program
     NvU64 module_gpu_va{};
 
     // Ensure at least 4KB of space after the program to mitigate prefetch memory faults.
-    size_t allocated_size = ceilDiv(imageSize, 0x1000) * 0x1000 + 0x1000;
+    size_t allocated_size = ceilDiv(rebuilt_image_size, 0x1000) * 0x1000 + 0x1000;
     LIBRECUDA_ERR_PROPAGATE(
             gpuAlloc(current_ctx, allocated_size, false, false, true, 0, &module_gpu_va)
     );
@@ -875,17 +930,17 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             std::string target_section_name{};
             if (section->get_type() == ELFIO::SHT_REL) {
                 LIBRECUDA_VALIDATE(section_name.substr(0, 4) == ".rel", LIBRECUDA_ERROR_INVALID_IMAGE);
-                target_section_name = section_name.substr(5);
+                target_section_name = section_name.substr(4);
             } else if (section->get_type() == ELFIO::SHT_RELA) {
                 LIBRECUDA_VALIDATE(section_name.substr(0, 5) == ".rela", LIBRECUDA_ERROR_INVALID_IMAGE);
-                target_section_name = section_name.substr(6);
+                target_section_name = section_name.substr(5);
             }
 
             // find target section address
             NvU64 target_image_off{};
             for (const auto &s: elf_reader.sections) {
                 if (s->get_name() == target_section_name) {
-                    target_image_off = s->get_offset();
+                    target_image_off = s->get_address();
                     break;
                 }
             }
@@ -926,7 +981,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         );
 
                         auto s = elf_reader.sections[section_index];
-                        sym_section_offs = s->get_offset();
+                        sym_section_offs = s->get_address();
                     }
 
                     relocs.push_back(RelocInfo{
@@ -946,7 +1001,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             function_names.insert(function_name);
 
             // map to where the function is in the allocated memory
-            function_addrs[function_name] = module_gpu_va + section->get_offset();
+            function_addrs[function_name] = module_gpu_va + section->get_address();
 
             // extract number of registers from section info
             function_regs[function_name] = section->get_info() >> 24;
@@ -955,23 +1010,29 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             function_sizes[function_name] = section->get_size();
         } else if (section_name.size() > 12 && section_name.substr(0, 12) == ".nv.constant") {
             std::string constant_nr_str = section_name.substr(12);
-
             size_t end{};
             NvU32 constant_nr = std::stoi(constant_nr_str, &end);
+
+            std::string function_name;
             if (end != constant_nr_str.size()) {
-                std::string function_name = constant_nr_str.substr(end + 1);
-
-                auto &func_constants_list = constants[function_name];
-
-                auto const_info = KernelConstantInfo{
-                        .address=module_gpu_va + section->get_offset(),
-                        .size=section->get_size()
-                };
-                if (func_constants_list.size() < constant_nr + 1) {
-                    func_constants_list.resize(constant_nr + 1);
-                }
-                func_constants_list[constant_nr] = const_info;
+                function_name = constant_nr_str.substr(end + 1);
+            } else {
+                function_name = ""; // null function applies to all constants
             }
+
+            auto &func_constants_list = constants[function_name];
+
+            auto const_info = KernelConstantInfo{
+                    .const_nr=constant_nr,
+                    .address=module_gpu_va + section->get_address(),
+                    .size=section->get_size()
+            };
+            if (constant_nr == 0) {
+                // const0 must be the first in the constant list for sanity purposes. ptxas respects this afaik
+                LIBRECUDA_VALIDATE(func_constants_list.empty(),
+                                   LIBRECUDA_ERROR_INVALID_IMAGE);
+            }
+            func_constants_list.push_back(const_info);
         } else if (section_name == ".nv.info") {
             const char *data = section->get_data();
             for (int off = 0; off < section->get_size(); off += (sizeof(NvU32) * 3)) {
@@ -1097,6 +1158,22 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             }
         }
     }
+    // add constants for "" function to all other constant lists
+    // as these constants are global to all functions
+    for (auto &[function_name, function_constants]: constants) {
+        if (function_name.empty()) {
+            continue;
+        }
+        auto null_func_consts_it = constants.find("");
+        if (null_func_consts_it == constants.end()) {
+            break;
+        }
+        auto null_func_consts = null_func_consts_it->second;
+        function_constants.reserve(null_func_consts.size());
+        for (const auto &constant: null_func_consts) {
+            function_constants.push_back(constant);
+        }
+    }
 
     std::vector<LibreCUFunction_> functions{};
     functions.reserve(function_names.size());
@@ -1121,20 +1198,20 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
 
     // apply relocations
     for (auto &reloc: relocs) {
-        LIBRECUDA_VALIDATE(reloc.apply_image_offset < imageSize, LIBRECUDA_ERROR_INVALID_IMAGE);
+        LIBRECUDA_VALIDATE(reloc.apply_image_offset < rebuilt_image_size, LIBRECUDA_ERROR_INVALID_IMAGE);
         switch (reloc.typ) {
             case 0x2: {
-                auto *loc_ptr = reinterpret_cast<NvU64 *>((NvU8 *) image + reloc.apply_image_offset);
+                auto *loc_ptr = reinterpret_cast<NvU64 *>((NvU8 *) rebuilt_image + reloc.apply_image_offset);
                 *loc_ptr = module_gpu_va + reloc.rel_sym_offset;
                 break;
             }
             case 0x38: {
-                auto *loc_ptr = reinterpret_cast<NvU32 *>((NvU8 *) image + reloc.apply_image_offset + 4);
+                auto *loc_ptr = reinterpret_cast<NvU32 *>((NvU8 *) rebuilt_image + reloc.apply_image_offset + 4);
                 *loc_ptr = (module_gpu_va + reloc.rel_sym_offset) & 0xffffffff;
                 break;
             }
             case 0x39: {
-                auto *loc_ptr = reinterpret_cast<NvU32 *>((NvU8 *) image + reloc.apply_image_offset + 4);
+                auto *loc_ptr = reinterpret_cast<NvU32 *>((NvU8 *) rebuilt_image + reloc.apply_image_offset + 4);
                 *loc_ptr = ((module_gpu_va + reloc.rel_sym_offset) >> 32);
                 break;
             }
@@ -1142,7 +1219,8 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     }
 
     // copy to gpu
-    memcpy(reinterpret_cast<void *>(module_gpu_va), image, imageSize);
+    memcpy(reinterpret_cast<void *>(module_gpu_va), rebuilt_image, rebuilt_image_size);
+    delete[] rebuilt_image;
     LIBRECUDA_SUCCEED();
 }
 

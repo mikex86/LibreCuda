@@ -1,8 +1,8 @@
 set(
-    DRIVERAPI_SOURCES
-    src/librecuda.cpp
-    src/librecuda_status.cpp
-    src/cmdqueue.cpp
+        DRIVERAPI_SOURCES
+        src/librecuda.cpp
+        src/librecuda_status.cpp
+        src/cmdqueue.cpp
 )
 
 add_library(driverapi SHARED ${DRIVERAPI_SOURCES})

@@ -47,6 +47,7 @@ struct LibreCUcontext_ {
 
 
 struct KernelConstantInfo {
+    NvU32 const_nr;
     NvU64 address;
     NvU64 size;
 };
