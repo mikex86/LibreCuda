@@ -1,16 +1,28 @@
 cmake_minimum_required(VERSION 3.5)
 project(LibreCuda CXX)
 
-# create elf-parser library
-add_subdirectory(third_party/ELFIO)
+set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
+set( CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib )
 
-add_executable(LibreCuda
-        src/main.cpp
-        src/librecuda.cpp
-        src/librecuda_status.cpp
-        src/cmdqueue.cpp)
+include(CheckCXXCompilerFlag)
+CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
+if(COMPILER_SUPPORTS_CXX17)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+   add_definitions(-DCOMPILEDWITHC17)
+   message(STATUS "Using flag -std=c++17.")
+else()
+   message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++17 support. Please use a different C++ compiler.")
+endif()
 
-target_link_libraries(LibreCuda PRIVATE elfio)
+if(NOT EXISTS ${CMAKE_SOURCE_DIR}/third_party/ELFIO/elfio)
+        message("-- ELFIO not found, fetching ELFIO...")
+        execute_process(COMMAND git submodule update --init)
+        add_subdirectory(third_party/ELFIO)
+else ()
+        message("-- ELFIO found.")
+        add_subdirectory(third_party/ELFIO)
+endif()
 
-# TODO: REMOVE WHEN CRUDE DEBUG MAIN GETS DELETED
-file(COPY ${CMAKE_SOURCE_DIR}/write_float.cubin DESTINATION ${CMAKE_BINARY_DIR})
+add_subdirectory(driverapi)
+
+add_subdirectory(tests)
