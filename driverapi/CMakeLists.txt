@@ -6,8 +6,6 @@ set(
 )
 
 add_library(driverapi SHARED ${DRIVERAPI_SOURCES})
-target_include_directories(
-    driverapi PUBLIC 
-    "include/"
-    "internal/")
+target_include_directories(driverapi PRIVATE "internal/")
+target_include_directories(driverapi PUBLIC "include/")
 target_link_libraries(driverapi PRIVATE elfio)
