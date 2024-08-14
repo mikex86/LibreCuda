@@ -17,7 +17,7 @@ inline void cudaCheck(libreCudaStatus_t error, const char *file, int line) {
 };
 #define CUDA_CHECK(err) (cudaCheck(err, __FILE__, __LINE__))
 
-int main(int argc, char *argv[]) {
+int main() {
     CUDA_CHECK(libreCuInit(0));
 
     int device_count{};
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     uint8_t *image;
     size_t n_bytes;
     {
-        std::ifstream input(argv[1], std::ios::binary);
+        std::ifstream input("write_float.cubin", std::ios::binary);
         std::vector<uint8_t> bytes(
                 (std::istreambuf_iterator<char>(input)),
                 (std::istreambuf_iterator<char>()));
