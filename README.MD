@@ -1,6 +1,9 @@
 # LibreCUDA
 
-LibreCUDA is a project aimed at replacing the CUDA driver API to enable launching CUDA code on Nvidia GPUs without relying on the proprietary CUDA runtime. It achieves this by communicating directly with the hardware via ioctls, (specifically what Nvidia's open-gpu-kernel-modules refer to as the rmapi), as well as QMD, Nvidia's MMIO command queue structure. LibreCUDA is capable of uploading CUDA ELF binaries onto the GPU and launching them via the command queue.
+LibreCUDA is a project aimed at replacing the CUDA driver API to enable launching CUDA code on Nvidia GPUs without
+relying on the proprietary CUDA runtime. It achieves this by communicating directly with the hardware via ioctls, (
+specifically what Nvidia's open-gpu-kernel-modules refer to as the rmapi), as well as QMD, Nvidia's MMIO command queue
+structure. LibreCUDA is capable of uploading CUDA ELF binaries onto the GPU and launching them via the command queue.
 
 ## Current features
 
@@ -112,9 +115,37 @@ Dst value (pre exec): 0
 Dst value (post exec): 3.1415
 ```
 
+### How to Use
+
+The recommended way to use librecuda is to clone the LibreCUDA repository and link against the `driverapi` library in
+CMake:
+
+```
+git clone https://github.com/mikex86/LibreCuda.git
+```
+
+#### Add the repository as a CMake directory
+
+```cmake
+add_subdirectory(LibreCuda)
+```
+
+#### Link against the driver api library
+
+```cmake
+target_link_libraries(YourTarget PRIVATE driverapi)
+```
+
+#### Include headers
+
+```c
+#include <librecuda.h>
+```
+
 ## Project Status
 
-The project is in its early stages and currently implements only rudimentary CUDA functions. It is not yet ready for production use.
+The project is in its early stages and currently implements only rudimentary CUDA functions. It is not yet ready for
+production use.
 
 ## Contributing
 
