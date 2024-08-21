@@ -142,7 +142,7 @@ static inline libreCudaStatus_t rm_alloc(int fd, NvV32 clss,
     LIBRECUDA_SUCCEED();
 }
 
-#define LIBRECUDA_VALIDATE_RM_ALLOC(status) { if (status != LIBRECUDA_SUCCESS) { LIBRECUDA_DEBUG(__FILE__ ":" TOSTRING(__LINE__) ": RM_ALLOC failed with status " + std::to_string(status)); LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
+#define LIBRECUDA_VALIDATE_RM_ALLOC(status) { libreCudaStatus_t status_val = status; if (status_val != LIBRECUDA_SUCCESS) { LIBRECUDA_DEBUG(__FILE__ ":" TOSTRING(__LINE__) ": rm_alloc failed with status " + std::to_string(status_val)); LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
 
 #define RM_ALLOC(fd, clss, client, parent, object, params, param_size, pObjectNew) LIBRECUDA_VALIDATE_RM_ALLOC(rm_alloc(fd, clss, client, parent, object, params, param_size, pObjectNew));
 
@@ -151,7 +151,7 @@ static inline libreCudaStatus_t rm_ctrl(int fd,
                                         NvHandle client, NvHandle object,
                                         void *params, NvU32 paramSize);
 
-#define LIBRECUDA_VALIDATE_RM_CTRL(status) { if (status != LIBRECUDA_SUCCESS) { LIBRECUDA_DEBUG(__FILE__ ":" TOSTRING(__LINE__) ": RM_CTRL failed with status " + std::to_string(status)); LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
+#define LIBRECUDA_VALIDATE_RM_CTRL(status) { libreCudaStatus_t status_val = status; if (status_val != LIBRECUDA_SUCCESS) { LIBRECUDA_DEBUG(__FILE__ ":" TOSTRING(__LINE__) ": rm_ctrl failed with status " + std::to_string(status_val)); LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN); } }
 
 #define RM_CTRL(fd, cmd, client, object, params, paramSize) LIBRECUDA_VALIDATE_RM_CTRL(rm_ctrl(fd, cmd, client, object, params, paramSize))
 

@@ -103,7 +103,7 @@ libreCudaStatus_t libreCuInit(int flags) {
         // Not required by all platforms, status only ok when needed
         // On Linux, open-kernel-modules requires the fd, while the proprietary driver does not
         int ret = uvm_ioctl(fd_uvm_2, UVM_MM_INITIALIZE, &params);
-        int status = params.rmStatus;
+        NV_STATUS status = params.rmStatus;
         if (ret != 0 || status != 0) {
             if (status == NV_WARN_NOTHING_TO_DO) {
                 close(fd_uvm_2);
@@ -774,12 +774,12 @@ libreCudaStatus_t libreCuMemFree(void *devicePointer) {
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount) {
+libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount, LibreCUstream stream) {
     LIBRECUDA_VALIDATE(dst != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(src != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ENSURE_CTX_VALID();
-
-
+    stream->command_queue->gpuMemcpy(dst, src, byteCount);
     LIBRECUDA_SUCCEED();
 }
 
@@ -1309,13 +1309,15 @@ libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut, uint32_t flags)
 libreCudaStatus_t libreCuStreamCommence(LibreCUstream stream) {
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     stream->command_queue->startExecution(COMPUTE);
+    stream->command_queue->startExecution(DMA);
     LIBRECUDA_SUCCEED();
 }
 
 
 libreCudaStatus_t libreCuStreamAwait(LibreCUstream stream) {
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    stream->command_queue->awaitExecution();
+    stream->command_queue->awaitExecution(COMPUTE);
+    stream->command_queue->awaitExecution(DMA);
     LIBRECUDA_SUCCEED();
 }
 

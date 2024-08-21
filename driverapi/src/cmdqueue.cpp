@@ -41,12 +41,15 @@ NvCommandQueue::NvCommandQueue(LibreCUcontext ctx) : ctx(ctx) {
 
 }
 
-libreCudaStatus_t NvCommandQueue::submitToFifo(GPFifo &gpfifo, CommandQueuePage &page) {
-    LIBRECUDA_VALIDATE(page.commandQueueSpace != nullptr, LIBRECUDA_ERROR_NOT_INITIALIZED);
+libreCudaStatus_t NvCommandQueue::submitToFifo(QueueType queueType) {
+    auto &commandBuffer = queueType == COMPUTE ? computeCommandBuffer : dmaCommandBuffer;
 
     if (commandBuffer.empty()) {
         return LIBRECUDA_SUCCESS; // don't do anything when command buffer is emtpy
     }
+
+    auto &page = queueType == COMPUTE ? computeQueuePage : dmaQueuePage;
+    auto &gpfifo = queueType == COMPUTE ? ctx->compute_gpfifo : ctx->dma_gpfifo;
 
     if ((page.commandWriteIdx + commandBuffer.size()) > MAX_CMD_QUEUE_PAGE_SIZE) {
         LIBRECUDA_VALIDATE(NvU64(gpfifo.ring[gpfifo.controls->GPGet] & 0xFFFFFFFFFC) >=
@@ -103,43 +106,46 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
         }
     }
 
-    // create timeline signal
+    // create timeline signals
     {
-        LIBRECUDA_ERR_PROPAGATE(obtainSignal(&timelineSignal));
+        LIBRECUDA_ERR_PROPAGATE(obtainSignal(&computeTimelineSignal));
+        LIBRECUDA_ERR_PROPAGATE(obtainSignal(&dmaTimelineSignal));
     }
 
     // setup compute queue
     {
         LIBRECUDA_ERR_PROPAGATE(
-                enqueue(makeNvMethod(1, NVC6C0_SET_OBJECT, 1), {ctx->device->compute_class})
+                enqueue(makeNvMethod(1, NVC6C0_SET_OBJECT, 1), {ctx->device->compute_class}, COMPUTE)
         );
         LIBRECUDA_ERR_PROPAGATE(
                 enqueue(
                         makeNvMethod(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_WINDOW_A, 2),
-                        {U64_HI_32_BITS(local_mem_window), U64_LO_32_BITS(local_mem_window)}
+                        {U64_HI_32_BITS(local_mem_window), U64_LO_32_BITS(local_mem_window)},
+                        COMPUTE
                 )
         );
         LIBRECUDA_ERR_PROPAGATE(
                 enqueue(
                         makeNvMethod(1, NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_A, 2),
-                        {U64_HI_32_BITS(shared_mem_window), U64_LO_32_BITS(shared_mem_window)}
+                        {U64_HI_32_BITS(shared_mem_window), U64_LO_32_BITS(shared_mem_window)},
+                        COMPUTE
                 )
         );
-        timelineCtr++;
+        computeTimelineCtr++;
     }
     LIBRECUDA_ERR_PROPAGATE(startExecution(COMPUTE));
-    LIBRECUDA_ERR_PROPAGATE(awaitExecution());
+    LIBRECUDA_ERR_PROPAGATE(awaitExecution(COMPUTE));
 
     // setup copy queue
     {
         LIBRECUDA_ERR_PROPAGATE(
-                enqueue(makeNvMethod(4, NVC6C0_SET_OBJECT, 1), {AMPERE_DMA_COPY_B})
+                enqueue(makeNvMethod(4, NVC6C0_SET_OBJECT, 1), {AMPERE_DMA_COPY_B}, DMA)
         );
-        timelineCtr++;
+        dmaTimelineCtr++;
     }
 
     LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
-    LIBRECUDA_ERR_PROPAGATE(awaitExecution());
+    LIBRECUDA_ERR_PROPAGATE(awaitExecution(DMA));
 
     // allocate kernargs page
     {
@@ -173,7 +179,8 @@ libreCudaStatus_t NvCommandQueue::allocKernArgs(NvU64 *pMemOut, size_t size) {
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t NvCommandQueue::enqueue(NvMethod method, std::initializer_list<NvU32> arguments) {
+libreCudaStatus_t NvCommandQueue::enqueue(NvMethod method, std::initializer_list<NvU32> arguments, QueueType type) {
+    auto &commandBuffer = type == COMPUTE ? computeCommandBuffer : dmaCommandBuffer;
     // copy method bytes
     {
         commandBuffer.push_back(method);
@@ -236,7 +243,8 @@ NvCommandQueue::~NvCommandQueue() {
     // we unfortunately can't validate errors in the destructor,
     // but this is fairly safe and shouldn't fail unless somebody
     // frees the pool or command page
-    releaseSignal(timelineSignal);
+    releaseSignal(computeTimelineSignal);
+    releaseSignal(dmaTimelineSignal);
 
     gpuFree(ctx, reinterpret_cast<NvU64>(signalPool));
     gpuFree(ctx, reinterpret_cast<NvU64>(computeQueuePage.commandQueueSpace));
@@ -244,7 +252,9 @@ NvCommandQueue::~NvCommandQueue() {
     gpuFree(ctx, reinterpret_cast<NvU64>(kernArgsPageVa));
 }
 
-libreCudaStatus_t NvCommandQueue::awaitExecution() {
+libreCudaStatus_t NvCommandQueue::awaitExecution(QueueType queueType) {
+    auto &timelineSignal = queueType == COMPUTE ? computeTimelineSignal : dmaTimelineSignal;
+    auto timelineCtr = queueType == COMPUTE ? computeTimelineCtr : dmaTimelineCtr;
     LIBRECUDA_VALIDATE(timelineSignal != nullptr, LIBRECUDA_ERROR_NOT_INITIALIZED);
     LIBRECUDA_ERR_PROPAGATE(signalWait(timelineSignal, timelineCtr));
     LIBRECUDA_SUCCEED();
@@ -270,12 +280,14 @@ libreCudaStatus_t NvCommandQueue::signalNotify(NvSignal *pSignal, NvU32 signalTa
                             (NVC56F_SEM_EXECUTE_PAYLOAD_SIZE_64BIT << 24) |
                             (NVC56F_SEM_EXECUTE_RELEASE_TIMESTAMP_EN
                                     << 25)
-                    }
+                    },
+                    COMPUTE
             ));
             LIBRECUDA_ERR_PROPAGATE(
                     enqueue(
                             makeNvMethod(4, NVC56F_NON_STALL_INTERRUPT, 1),
-                            {0x0}
+                            {0x0},
+                            COMPUTE
                     )
             );
             break;
@@ -293,11 +305,13 @@ libreCudaStatus_t NvCommandQueue::signalNotify(NvSignal *pSignal, NvU32 signalTa
 
                             // 4 means what?
                             4
-                    }
+                    },
+                    DMA
             ));
             LIBRECUDA_ERR_PROPAGATE(enqueue(
                     makeNvMethod(4, NVC6B5_LAUNCH_DMA, 1),
-                    {0x14} // also don't know what this means
+                    {0x14}, // also don't know what this means
+                    DMA
             ))
             break;
         }
@@ -332,10 +346,11 @@ libreCudaStatus_t NvCommandQueue::signalWait(NvSignal *pSignal, NvU32 signalTarg
 }
 
 libreCudaStatus_t NvCommandQueue::startExecution(QueueType queueType) {
+    auto &timelineSignal = queueType == COMPUTE ? computeTimelineSignal : dmaTimelineSignal;
+    auto timelineCtr = queueType == COMPUTE ? computeTimelineCtr : dmaTimelineCtr;
     LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, queueType));
     LIBRECUDA_ERR_PROPAGATE(submitToFifo(
-            queueType == COMPUTE ? ctx->compute_gpfifo : ctx->dma_gpfifo,
-            queueType == COMPUTE ? computeQueuePage : dmaQueuePage
+            queueType
     ));
 
     kernArgsWriteIdx = 0; // reset kern args write idx
@@ -413,7 +428,8 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
                         // weird half big and little endian along int borders again...
                         U64_HI_32_BITS(shaderLocalMemoryVa),
                         U64_LO_32_BITS(shaderLocalMemoryVa)
-                }
+                },
+                COMPUTE
         ));
         LIBRECUDA_ERR_PROPAGATE(enqueue(
                 makeNvMethod(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A, 3),
@@ -424,13 +440,14 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
                         U64_LO_32_BITS(bytes_per_tpc),
 
                         0x40 // whatever this means...
-                }
+                },
+                COMPUTE
         ));
-        timelineCtr++;
+        computeTimelineCtr++;
     }
 
     startExecution(COMPUTE);
-    awaitExecution();
+    awaitExecution(COMPUTE);
 
     LIBRECUDA_SUCCEED();
 }
@@ -574,13 +591,17 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
 
         // setup constant buffers
         const auto &constants = function->constants;
-        for (auto constant_info : constants) {
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER(constant_info.const_nr), , , U64_HI_32_BITS(constant_info.address),
+        for (auto constant_info: constants) {
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER(constant_info.const_nr), , ,
+                               U64_HI_32_BITS(constant_info.address),
                                qmd_data);
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER(constant_info.const_nr), , , U64_LO_32_BITS(constant_info.address),
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER(constant_info.const_nr), , ,
+                               U64_LO_32_BITS(constant_info.address),
                                qmd_data);
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_SIZE_SHIFTED4(constant_info.const_nr), , , constant_info.size, qmd_data);
-            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_VALID(constant_info.const_nr), , , NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID_TRUE,
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_SIZE_SHIFTED4(constant_info.const_nr), , ,
+                               constant_info.size, qmd_data);
+            FLD_SET_DRF_NUM_MW(C6C0_QMDV03_00_CONSTANT_BUFFER_VALID(constant_info.const_nr), , ,
+                               NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID_TRUE,
                                qmd_data);
         }
 
@@ -616,7 +637,8 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
                         (NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_CONSTANT_TRUE << 12) |
                         (NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_GLOBAL_DATA_TRUE << 4) |
                         (NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_INSTRUCTION_TRUE << 0)
-                }
+                },
+                COMPUTE
         ));
     }
 
@@ -629,15 +651,56 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
 
         LIBRECUDA_ERR_PROPAGATE(enqueue(
                 makeNvMethod(1, NVC6C0_SEND_PCAS_A, 0x1),
-                {NvU32(qmd_addr >> 8)}
+                {NvU32(qmd_addr >> 8)},
+                COMPUTE
         ));
 
         LIBRECUDA_ERR_PROPAGATE(enqueue(
                 makeNvMethod(1, NVC6C0_SEND_SIGNALING_PCAS2_B, 0x1),
-                {0x9} // TODO: whatever this means...
+                {0x9}, // TODO: whatever this means...
+                COMPUTE
         ));
     }
-    timelineCtr++;
+    computeTimelineCtr++;
     LIBRECUDA_SUCCEED();
 }
 
+
+libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numBytes) {
+    LIBRECUDA_VALIDATE(dst != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(src != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(numBytes < UINT32_MAX, LIBRECUDA_ERROR_INVALID_VALUE);
+
+    LIBRECUDA_ERR_PROPAGATE(enqueue(
+            makeNvMethod(4, NVC6B5_OFFSET_IN_UPPER, 4),
+            {
+                    U64_HI_32_BITS(src),
+                    U64_LO_32_BITS(src),
+
+                    U64_HI_32_BITS(dst),
+                    U64_LO_32_BITS(dst),
+            },
+            DMA
+    ));
+
+    LIBRECUDA_ERR_PROPAGATE(enqueue(
+            makeNvMethod(4, NVC6B5_LINE_LENGTH_IN, 1),
+            {
+                    static_cast<NvU32>(numBytes)
+            },
+            DMA
+    ));
+
+    LIBRECUDA_ERR_PROPAGATE(enqueue(
+            makeNvMethod(4, NVC6B5_LAUNCH_DMA, 1),
+            {
+                    (NVC6B5_LAUNCH_DMA_DATA_TRANSFER_TYPE_NON_PIPELINED << 0) |
+                    (NVC6B5_LAUNCH_DMA_SRC_MEMORY_LAYOUT_PITCH << 7) |
+                    (NVC6B5_LAUNCH_DMA_DST_MEMORY_LAYOUT_PITCH << 8)
+            },
+            DMA
+    ));
+    dmaTimelineCtr++;
+
+    LIBRECUDA_SUCCEED();
+}

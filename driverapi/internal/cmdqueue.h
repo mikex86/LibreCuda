@@ -65,7 +65,7 @@ private:
      * - NvMethod (NvU32) nvMethod
      * - vararg NvU32 expected by method (tightly packed arguments) ; size is encoded in the NvMethod bit structure
      */
-    std::vector<NvU32> commandBuffer{};
+    std::vector<NvU32> computeCommandBuffer{}, dmaCommandBuffer{};
 
     /**
      * compute queue page & stack ptr
@@ -90,7 +90,7 @@ private:
     /**
      * Primary signal used for synchronization
      */
-    NvSignal *timelineSignal{};
+    NvSignal *computeTimelineSignal{}, *dmaTimelineSignal{};
 
     /**
      * Incrementing counter used for synchronization.
@@ -101,7 +101,7 @@ private:
      * The intuition here is that the timelineCtr advances first, as the queue is built, and the signal's value advances
      * to meet the timelineCtr. If they are equal, there is no async operation pending.
      */
-    NvU32 timelineCtr = 0;
+    NvU32 computeTimelineCtr = 0, dmaTimelineCtr = 0;
 
     /**
      * Virtual address of shader local memory used for shaders/kernels.
@@ -141,7 +141,7 @@ public:
     /**
      * Waits for the pending operations in the currently executing command queue to complete
      */
-    libreCudaStatus_t awaitExecution();
+    libreCudaStatus_t awaitExecution(QueueType queueType);
 
     ~NvCommandQueue();
 
@@ -153,9 +153,11 @@ public:
                    uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
                    void **params, size_t numParams);
 
+    libreCudaStatus_t gpuMemcpy(void *dst, void *src, size_t numBytes);
+
 private:
 
-    libreCudaStatus_t enqueue(NvMethod method, std::initializer_list<NvU32> arguments);
+    libreCudaStatus_t enqueue(NvMethod method, std::initializer_list<NvU32> arguments, QueueType type);
 
     libreCudaStatus_t obtainSignal(NvSignal **pSignalPtr);
 
@@ -165,7 +167,7 @@ private:
 
     libreCudaStatus_t signalWait(NvSignal *pSignal, NvU32 signalTarget);
 
-    libreCudaStatus_t submitToFifo(GPFifo &gpfifo, CommandQueuePage &page);
+    libreCudaStatus_t submitToFifo(QueueType type);
 
     libreCudaStatus_t allocKernArgs(NvU64 *pMemOut, size_t size);
 };

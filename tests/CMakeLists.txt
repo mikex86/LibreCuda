@@ -1,1 +1,2 @@
 add_subdirectory(write_float)
+add_subdirectory(memcopy)

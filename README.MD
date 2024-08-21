@@ -40,7 +40,7 @@ int main() {
                 (std::istreambuf_iterator<char>()));
         input.close();
         image = new uint8_t[bytes.size()];
-        memcpy(image, bytes.data(), bytes.size());
+        doMemcpy(image, bytes.data(), bytes.size());
         n_bytes = bytes.size();
     }
     libreCuModuleLoadData(&module, image, n_bytes);
