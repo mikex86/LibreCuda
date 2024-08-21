@@ -865,7 +865,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     }
                 } else {
                     // insert padding
-                    NvU32 align = maxOf(section->get_addr_align(), force_section_align);
+                    NvU32 align = maxOf(static_cast<NvU32>(section->get_addr_align()), force_section_align);
                     size_t num_padding_bytes = ((align - image_data.size()) % align);
                     image_data.resize(image_data.size() + num_padding_bytes);
 

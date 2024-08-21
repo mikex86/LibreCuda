@@ -121,7 +121,7 @@ The recommended way to use librecuda is to clone the LibreCUDA repository and li
 CMake:
 
 ```
-git clone https://github.com/mikex86/LibreCuda.git
+git clone --recurse https://github.com/mikex86/LibreCuda.git
 ```
 
 #### Add the repository as a CMake directory

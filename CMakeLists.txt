@@ -11,7 +11,7 @@ else ()
     message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++17 support. Please use a different C++ compiler.")
 endif ()
 
-if (NOT EXISTS ${CMAKE_SOURCE_DIR}/third_party/ELFIO/elfio)
+if (NOT EXISTS third_party/ELFIO/elfio)
     message("-- ELFIO not found, fetching ELFIO...")
     execute_process(COMMAND git submodule update --init)
     add_subdirectory(third_party/ELFIO)
