@@ -1330,3 +1330,15 @@ libreCudaStatus_t libreCuStreamDestroy(LibreCUstream stream) {
     delete stream;
     LIBRECUDA_SUCCEED();
 }
+
+libreCudaStatus_t libreCuDeviceGetName(char *pDeviceName, int length, LibreCUdevice device) {
+    LIBRECUDA_VALIDATE(pDeviceName != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(device != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_ENSURE_CTX_VALID();
+
+    NV2080_CTRL_GPU_GET_NAME_STRING_PARAMS params{};
+    RM_CTRL(fd_ctl, NV2080_CTRL_CMD_GPU_GET_NAME_STRING, root, current_ctx->device_handle, &params, sizeof(params));
+    memcpy(pDeviceName, params.gpuNameString.ascii, length);
+
+    LIBRECUDA_SUCCEED();
+}

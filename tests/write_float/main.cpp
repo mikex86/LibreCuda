@@ -30,6 +30,10 @@ int main() {
     LibreCUcontext ctx{};
     CUDA_CHECK(libreCuCtxCreate_v2(&ctx, CU_CTX_SCHED_YIELD, device));
 
+    char name_buffer[256] = {};
+    libreCuDeviceGetName(name_buffer, 256, device);
+    std::cout << "Device Name: " + std::string(name_buffer) << std::endl;
+
     LibreCUmodule module{};
 
     // read cubin file

@@ -46,6 +46,8 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut
 
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuStreamDestroy(LibreCUstream stream);
 
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuDeviceGetName(char *pDeviceName, int length, LibreCUdevice device);
+
 LIBRECUDA_EXPORT libreCudaStatus_t
 libreCuModuleLoadData(LibreCUmodule *pModuleOut, const void *image, size_t imageSize);
 
