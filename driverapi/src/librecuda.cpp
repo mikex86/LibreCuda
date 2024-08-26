@@ -1119,8 +1119,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         break;
                     }
                     case EIATTR_EXIT_INSTR_OFFSETS: {
-                        off += (EIATTR_EXIT_INSTR_OFFSETS_ATTR_WORD_LEN * sizeof(NvU32));
-                        break;
+                        goto parse_attrs_end;
                     }
                     default: {
                         // TODO: This isn't strictly correct,
@@ -1130,6 +1129,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     }
                 }
             }
+            parse_attrs_end:;
         }
     }
 
@@ -1340,5 +1340,11 @@ libreCudaStatus_t libreCuDeviceGetName(char *pDeviceName, int length, LibreCUdev
     RM_CTRL(fd_ctl, NV2080_CTRL_CMD_GPU_GET_NAME_STRING, root, current_ctx->device_handle, &params, sizeof(params));
     memcpy(pDeviceName, params.gpuNameString.ascii, length);
 
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuCtxGetCurrent(LibreCUcontext *pCtxOut) {
+    LIBRECUDA_VALIDATE(pCtxOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    *pCtxOut = current_ctx;
     LIBRECUDA_SUCCEED();
 }
