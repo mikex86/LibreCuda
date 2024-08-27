@@ -1028,11 +1028,15 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     .size=section->get_size()
             };
             if (constant_nr == 0) {
-                // const0 must be the first in the constant list for sanity purposes. ptxas respects this afaik
-                LIBRECUDA_VALIDATE(func_constants_list.empty(),
-                                   LIBRECUDA_ERROR_INVALID_IMAGE);
+                // const0 must be the first in the constant list for sanity purposes.
+                if (func_constants_list.empty()) {
+                    func_constants_list.push_back(const_info);
+                } else {
+                    func_constants_list.insert(func_constants_list.begin(), const_info);
+                }
+            } else {
+                func_constants_list.push_back(const_info);
             }
-            func_constants_list.push_back(const_info);
         } else if (section_name == ".nv.info") {
             const char *data = section->get_data();
             for (int off = 0; off < section->get_size(); off += (sizeof(NvU32) * 3)) {
@@ -1270,12 +1274,12 @@ libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
                                       void **extra) {
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    stream->command_queue->launchFunction(function,
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->launchFunction(function,
                                           gridDimX, gridDimY, gridDimZ,
                                           blockDimX, blockDimY, blockDimZ,
                                           kernelParams,
                                           numParams
-    );
+    ));
     LIBRECUDA_SUCCEED();
 }
 
@@ -1308,16 +1312,16 @@ libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut, uint32_t flags)
 
 libreCudaStatus_t libreCuStreamCommence(LibreCUstream stream) {
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    stream->command_queue->startExecution(COMPUTE);
-    stream->command_queue->startExecution(DMA);
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->startExecution(COMPUTE));
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->startExecution(DMA));
     LIBRECUDA_SUCCEED();
 }
 
 
 libreCudaStatus_t libreCuStreamAwait(LibreCUstream stream) {
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    stream->command_queue->awaitExecution(COMPUTE);
-    stream->command_queue->awaitExecution(DMA);
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->awaitExecution(COMPUTE));
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->awaitExecution(DMA));
     LIBRECUDA_SUCCEED();
 }
 

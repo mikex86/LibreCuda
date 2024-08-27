@@ -20,8 +20,8 @@ static inline NvMethod makeNvMethod(int subcommand, int method, int size, int ty
 
 struct NvSignal {
 public:
-    NvU64 value{};
-    NvU64 time_stamp{};
+    volatile NvU64 value{};
+    volatile NvU64 time_stamp{};
 };
 
 enum QueueType {

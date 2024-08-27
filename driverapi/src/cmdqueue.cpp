@@ -294,17 +294,14 @@ libreCudaStatus_t NvCommandQueue::signalNotify(NvSignal *pSignal, NvU32 signalTa
         }
         case DMA: {
             LIBRECUDA_ERR_PROPAGATE(enqueue(
-                    makeNvMethod(4, NVC6B5_SET_SEMAPHORE_A, 4),
+                    makeNvMethod(4, NVC6B5_SET_SEMAPHORE_A, 3),
                     {
                             // little endian inside NvU32s but big endian across NvU32s for some reason...
                             // don't question nvidia's autism...
                             U64_HI_32_BITS(pSignal),
                             U64_LO_32_BITS(pSignal),
 
-                            signalTarget,
-
-                            // 4 means what?
-                            4
+                            signalTarget
                     },
                     DMA
             ));
@@ -461,12 +458,23 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
                                uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
                                void **params, size_t numParams) {
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(numParams == function->param_info.size(), LIBRECUDA_ERROR_INVALID_VALUE);
 
     LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function->local_mem_req));
 
     // prepare constbuf0
     NvU32 constbuf0_data[88] = {};
     {
+        // populate ntid registers (blockDim.x, ...)
+        constbuf0_data[0] = blockDimX;
+        constbuf0_data[1] = blockDimY;
+        constbuf0_data[2] = blockDimZ;
+
+        // populate nctaid registers (gridDim.x, ...)
+        constbuf0_data[3] = gridDimX;
+        constbuf0_data[4] = gridDimY;
+        constbuf0_data[5] = gridDimZ;
+
         // little endian
         constbuf0_data[6] = U64_LO_32_BITS(shared_mem_window);
         constbuf0_data[7] = U64_HI_32_BITS(shared_mem_window);
@@ -530,6 +538,23 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
             }
         }
     }
+
+    // check launch dimensions
+    NvU32 max_threads = ((65536 / roundUp(maxOf(1u, function->num_registers) * 32, 256u)) / 4) * 4 * 32;
+
+    NvU32 blockProd = blockDimX * blockDimY * blockDimZ;
+    if (blockProd > 1024 || max_threads < blockProd) {
+        LIBRECUDA_FAIL(LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    }
+
+    LIBRECUDA_VALIDATE(blockDimX < 1024, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(blockDimY < 1024, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(blockDimZ < 64, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+
+    LIBRECUDA_VALIDATE(gridDimX < 2147483647, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(gridDimY < 65535, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+    LIBRECUDA_VALIDATE(gridDimZ < 65535, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
+
 
     uint32_t shmem_usage = function->shared_mem;
     qmd_cmd_t qmd_data{};
@@ -613,21 +638,6 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
 #pragma clang diagnostic pop
     }
 
-
-    NvU32 max_threads = ((65536 / roundUp(maxOf(1u, function->num_registers) * 32, 256u)) / 4) * 4 * 32;
-
-    NvU32 blockProd = blockDimX * blockDimY * blockDimZ;
-    if (blockProd > 1024 || max_threads < blockProd) {
-        LIBRECUDA_FAIL(LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
-    }
-
-    LIBRECUDA_VALIDATE(blockDimX < 1024, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
-    LIBRECUDA_VALIDATE(blockDimY < 1024, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
-    LIBRECUDA_VALIDATE(blockDimZ < 64, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
-
-    LIBRECUDA_VALIDATE(gridDimX < 2147483647, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
-    LIBRECUDA_VALIDATE(gridDimY < 65535, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
-    LIBRECUDA_VALIDATE(gridDimZ < 65535, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
 
     // memory barrier
     {
