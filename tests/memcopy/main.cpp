@@ -1,7 +1,6 @@
-#include "librecuda.h"
+#include <librecuda.h>
 
 #include <iostream>
-#include <cstring>
 
 inline void cudaCheck(libreCudaStatus_t error, const char *file, int line) {
     if (error != LIBRECUDA_SUCCESS) {

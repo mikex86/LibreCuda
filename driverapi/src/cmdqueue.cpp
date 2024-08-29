@@ -543,8 +543,10 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     // check launch dimensions
     NvU32 max_threads = ((65536 / roundUp(maxOf(1u, function->num_registers) * 32, 256u)) / 4) * 4 * 32;
 
+    uint32_t shmem_usage = function->shared_mem;
+
     NvU32 blockProd = blockDimX * blockDimY * blockDimZ;
-    if (sharedMemBytes == 0 && (blockProd > 1024 || max_threads < blockProd)) {
+    if ((shmem_usage > sharedMemBytes) && (blockProd > 1024 || max_threads < blockProd)) {
         LIBRECUDA_FAIL(LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
     }
 
@@ -557,7 +559,6 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     LIBRECUDA_VALIDATE(gridDimZ < 65535, LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
 
 
-    uint32_t shmem_usage = function->shared_mem;
     qmd_cmd_t qmd_data{};
     {
 #pragma clang diagnostic push

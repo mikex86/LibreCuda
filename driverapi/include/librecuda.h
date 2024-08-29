@@ -22,6 +22,14 @@ typedef LibreCUstream_ *LibreCUstream;
 #define CU_CTX_SCHED_YIELD 0x02
 #define CU_CTX_SCHED_BLOCKING_SYNC 0x04
 
+enum LibreCuDeviceAttribute {
+    CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK = 8,
+    CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN = 97
+};
+enum LibreCuFunctionAttribute {
+    CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES = 8,
+};
+
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuInit(int flags);
 
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuDeviceGetCount(int *pDeviceCount);
@@ -49,6 +57,10 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuStreamDestroy(LibreCUstream stream);
 
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuDeviceGetName(char *pDeviceName, int length, LibreCUdevice device);
+
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuDeviceGetAttribute(int *pValOut, LibreCuDeviceAttribute attribute, LibreCUdevice device);
+
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuFuncSetAttribute(LibreCUFunction function, LibreCuFunctionAttribute attribute, int value);
 
 LIBRECUDA_EXPORT libreCudaStatus_t
 libreCuModuleLoadData(LibreCUmodule *pModuleOut, const void *image, size_t imageSize);

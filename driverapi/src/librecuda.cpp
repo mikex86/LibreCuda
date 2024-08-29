@@ -17,6 +17,8 @@
 #include "nvidia/cl0080.h"
 #include "nvidia/cl2080.h"
 #include "nvidia/ctrl2080gpu.h"
+#include "nvidia/ctrl2080mc.h"
+#include "nvidia/ctrl2080mc.1.h"
 
 #include "nvidia/clc56f.h"
 #include "nvidia/g_allclasses.h"
@@ -1364,5 +1366,77 @@ libreCudaStatus_t libreCuDeviceGetName(char *pDeviceName, int length, LibreCUdev
 libreCudaStatus_t libreCuCtxGetCurrent(LibreCUcontext *pCtxOut) {
     LIBRECUDA_VALIDATE(pCtxOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     *pCtxOut = current_ctx;
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuDeviceGetAttribute(int *pValOut, LibreCuDeviceAttribute attribute, LibreCUdevice device) {
+    LIBRECUDA_VALIDATE(pValOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE)
+    LIBRECUDA_VALIDATE(device != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_ENSURE_CTX_VALID();
+
+    switch (attribute) {
+        case CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK: {
+            *pValOut = 49152; // we don't support GPUs where this is not the case (lol)
+            break;
+        }
+        case CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN: {
+            int result; // base result
+            NV2080_CTRL_MC_GET_ARCH_INFO_PARAMS params{};
+            RM_CTRL(fd_ctl, NV2080_CTRL_CMD_MC_GET_ARCH_INFO, root, current_ctx->device_handle, &params,
+                    sizeof(params));
+
+            // Not sure if this actually holds... if this reports bs, please make a PR
+            switch (params.architecture) {
+                case NV2080_CTRL_MC_ARCH_INFO_ARCHITECTURE_TU100: {
+                    // is turing
+                    result = 65536;
+                    break;
+                }
+                case NV2080_CTRL_MC_ARCH_INFO_ARCHITECTURE_GV100: {
+                    // is volta
+                    result = 98304;
+                    break;
+                }
+
+                case NV2080_CTRL_MC_ARCH_INFO_ARCHITECTURE_GA100:
+                case NV2080_CTRL_MC_ARCH_INFO_ARCHITECTURE_AD100:
+                    // ampere and ada report the same?
+                    result = 101376;
+                    break;
+
+                default: {
+                    result = 49152;
+                    break;
+                }
+            }
+            *pValOut = result;
+            break;
+        }
+        default: LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
+    }
+
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuFuncSetAttribute(LibreCUFunction function, LibreCuFunctionAttribute attribute, int value) {
+    LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_ENSURE_CTX_VALID();
+    switch (attribute) {
+        case CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES: {
+            int max_smem{};
+            LIBRECUDA_ERR_PROPAGATE(
+                    libreCuDeviceGetAttribute(
+                            &max_smem, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN,
+                            current_ctx->device
+                    )
+            );
+            if (value > max_smem) {
+                LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
+            }
+            function->shared_mem = maxOf(function->shared_mem, value);
+            break;
+        }
+        default: LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
+    }
     LIBRECUDA_SUCCEED();
 }

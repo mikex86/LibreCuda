@@ -1,11 +1,10 @@
 #include <librecuda.h>
 
 #include <iostream>
-#include <cstdint>
+#include <iomanip>
 #include <vector>
 #include <fstream>
 #include <cstring>
-#include <iomanip>
 
 inline void cudaCheck(libreCudaStatus_t error, const char *file, int line) {
     if (error != LIBRECUDA_SUCCESS) {
@@ -33,6 +32,15 @@ int main() {
     char name_buffer[256] = {};
     libreCuDeviceGetName(name_buffer, 256, device);
     std::cout << "Device Name: " + std::string(name_buffer) << std::endl;
+
+    int maxSharedMemoryPerBlock{};
+    CUDA_CHECK(libreCuDeviceGetAttribute(&maxSharedMemoryPerBlock, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, device));
+
+    int maxSharedMemoryPerBlockOptIn{};
+    CUDA_CHECK(libreCuDeviceGetAttribute(&maxSharedMemoryPerBlockOptIn, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, device));
+
+    std::cout << "Maximum shared memory per block: " << maxSharedMemoryPerBlock << " bytes" << std::endl;
+    std::cout << "Maximum shared memory per block: " << maxSharedMemoryPerBlockOptIn << " bytes" << std::endl;
 
     LibreCUmodule module{};
 
@@ -72,6 +80,9 @@ int main() {
     LibreCUFunction func{};
     CUDA_CHECK(libreCuModuleGetFunction(&func, module, "write_float_sum"));
 
+    // set dynamic shared memory
+    CUDA_CHECK(libreCuFuncSetAttribute(func, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, 8192));
+
     // create stream
     LibreCUstream stream{};
     CUDA_CHECK(libreCuStreamCreate(&stream, 0));
@@ -98,7 +109,7 @@ int main() {
             libreCuLaunchKernel(func,
                                 1, 1, 1,
                                 1, 1, 1,
-                                0,
+                                8192,
                                 stream,
                                 params, sizeof(params) / sizeof(void *),
                                 nullptr
