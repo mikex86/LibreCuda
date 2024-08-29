@@ -456,6 +456,7 @@ libreCudaStatus_t
 NvCommandQueue::launchFunction(LibreCUFunction function,
                                uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
                                uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
+                               uint32_t sharedMemBytes,
                                void **params, size_t numParams) {
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(numParams == function->param_info.size(), LIBRECUDA_ERROR_INVALID_VALUE);
@@ -543,7 +544,7 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     NvU32 max_threads = ((65536 / roundUp(maxOf(1u, function->num_registers) * 32, 256u)) / 4) * 4 * 32;
 
     NvU32 blockProd = blockDimX * blockDimY * blockDimZ;
-    if (blockProd > 1024 || max_threads < blockProd) {
+    if (sharedMemBytes == 0 && (blockProd > 1024 || max_threads < blockProd)) {
         LIBRECUDA_FAIL(LIBRECUDA_ERROR_LAUNCH_OUT_OF_RESOURCES);
     }
 

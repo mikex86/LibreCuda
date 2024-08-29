@@ -809,6 +809,9 @@ struct RelocInfo {
 #define EIATTR_MAXREG_COUNT 0x1b03
 #define EIATTR_MAXREG_COUNT_ATTR_WORD_LEN 1
 
+#define EIATTR_COOP_GROUP_MASK_REGIDS 0x2904
+#define EIATTR_COOP_GROUP_MASK_REGIDS_ATTR_WORD_LEN 1
+
 #define EIATTR_EXIT_INSTR_OFFSETS 0x1c04
 #define EIATTR_EXIT_INSTR_OFFSETS_ATTR_WORD_LEN 4
 
@@ -991,7 +994,6 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     });
                 }
             }
-
         }
         if (section_name.size() > 11 && section_name.substr(0, 11) == ".nv.shared.") {
             std::string function_name = section_name.substr(11);
@@ -1080,6 +1082,12 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                 const auto *line = reinterpret_cast<const NvU32 *>(data + off);
                 NvU32 key = line[0];
                 NvU16 type = key & 0xffff;
+
+                // this seems to indicate the end of attributes in some cases
+                if (key == 0xffffffff) {
+                    break;
+                }
+
                 switch (type) {
                     case EIATTR_CUDA_API_VERSION: {
                         off += (EIATTR_CUDA_API_VERSION_ATTR_WORD_LEN * sizeof(NvU32));
@@ -1110,6 +1118,10 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         off += (EIATTR_MAXREG_COUNT_ATTR_WORD_LEN * sizeof(NvU32));
                         break;
                     }
+                    case EIATTR_COOP_GROUP_MASK_REGIDS: {
+                        off += (EIATTR_COOP_GROUP_MASK_REGIDS_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
                     case EIATTR_EXTERNS: {
                         off += (EIATTR_EXTERNS_ATTR_WORD_LEN * sizeof(NvU32));
                         break;
@@ -1123,6 +1135,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         break;
                     }
                     case EIATTR_EXIT_INSTR_OFFSETS: {
+                        // this also indicates end of attributes
                         goto parse_attrs_end;
                     }
                     default: {
@@ -1275,10 +1288,11 @@ libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ERR_PROPAGATE(stream->command_queue->launchFunction(function,
-                                          gridDimX, gridDimY, gridDimZ,
-                                          blockDimX, blockDimY, blockDimZ,
-                                          kernelParams,
-                                          numParams
+                                                                  gridDimX, gridDimY, gridDimZ,
+                                                                  blockDimX, blockDimY, blockDimZ,
+                                                                  sharedMemBytes,
+                                                                  kernelParams,
+                                                                  numParams
     ));
     LIBRECUDA_SUCCEED();
 }
