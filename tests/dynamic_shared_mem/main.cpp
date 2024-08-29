@@ -40,7 +40,7 @@ int main() {
     CUDA_CHECK(libreCuDeviceGetAttribute(&maxSharedMemoryPerBlockOptIn, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, device));
 
     std::cout << "Maximum shared memory per block: " << maxSharedMemoryPerBlock << " bytes" << std::endl;
-    std::cout << "Maximum shared memory per block: " << maxSharedMemoryPerBlockOptIn << " bytes" << std::endl;
+    std::cout << "Maximum shared memory per block (opt-in): " << maxSharedMemoryPerBlockOptIn << " bytes" << std::endl;
 
     LibreCUmodule module{};
 
