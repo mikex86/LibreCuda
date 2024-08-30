@@ -73,7 +73,6 @@ struct LibreCUmodule_ {
 
 struct LibreCUFunction_ {
     std::string name;
-    NvU32 argc;
     NvU64 func_va_addr;
     NvU32 shared_mem;
     NvU32 num_registers;

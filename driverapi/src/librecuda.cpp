@@ -902,7 +902,6 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     );
 
     std::unordered_set<std::string> function_names{}; // list of all function names
-    std::unordered_map<std::string, NvU32> function_argcs{}; // maps function names to the number of input parameters they request
     std::unordered_map<std::string, NvU32> function_shared_mem{}; // maps function names to their shared memory requirements
     std::unordered_map<std::string, NvU64> function_addrs{}; // maps function names to their addresses in the uploaded memory
     std::unordered_map<std::string, NvU32> function_regs{}; // maps function names to their register requirements (n registers)
@@ -1200,12 +1199,12 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
         // TODO: validate each of those map lookups and throw invalid image errors
         functions.push_back(LibreCUFunction_{
                 .name=func_name,
-                .argc=function_argcs[func_name],
                 .func_va_addr=function_addrs[func_name],
                 .shared_mem=function_shared_mem[func_name],
                 .num_registers=function_regs[func_name],
                 .local_mem_req=function_local_mem_reqs[func_name],
                 .function_size=function_sizes[func_name],
+                .dyn_shared_mem_va=0,
                 .constants=constants[func_name],
                 .param_info=param_infos[func_name]
         });
