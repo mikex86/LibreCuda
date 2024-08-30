@@ -25,6 +25,7 @@
 #include "nvidia/ctrl0080gpu.h"
 #include "nvidia/ctrlc36f.h"
 #include "nvidia/ctrla06c.h"
+#include "memcopy.h"
 
 #include <elfio/elfio.hpp>
 
@@ -582,6 +583,9 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     *pCtx = ctx;
     current_ctx = ctx;
 
+    // load kernels
+    LIBRECUDA_ERR_PROPAGATE(loadMemcpyKernelsIfNeeded());
+
     LIBRECUDA_SUCCEED();
 }
 
@@ -767,6 +771,19 @@ gpuSystemAlloc(LibreCUcontext ctx, size_t size, bool mapToCpu, NvU32 mapFlags, N
     LIBRECUDA_SUCCEED();
 }
 
+bool isDevicePtr(void *ptr) {
+    LIBRECUDA_ENSURE_CTX_VALID();
+
+    auto va = reinterpret_cast<NvU64>(ptr);
+    if (va < UVM_HEAP_START) {
+        return false;
+    }
+    if (va < current_ctx->uvm_vaddr) {
+        return true;
+    }
+    return false;
+}
+
 libreCudaStatus_t libreCuMemFree(void *devicePointer) {
     LIBRECUDA_VALIDATE(devicePointer != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ENSURE_CTX_VALID();
@@ -781,7 +798,12 @@ libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount, LibreCUs
     LIBRECUDA_VALIDATE(src != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ENSURE_CTX_VALID();
-    stream->command_queue->gpuMemcpy(dst, src, byteCount);
+    if (isDevicePtr(dst) && isDevicePtr(src)) {
+        // is d2d copy
+        memcpyD2D(dst, src, byteCount, stream);
+    } else {
+        stream->command_queue->gpuMemcpy(dst, src, byteCount);
+    }
     LIBRECUDA_SUCCEED();
 }
 
@@ -818,7 +840,19 @@ struct RelocInfo {
 #define EIATTR_EXIT_INSTR_OFFSETS_ATTR_WORD_LEN 4
 
 #define EIATTR_SW2861232_WAR 0x3501
-#define EIATTR_SW2861232_ATTR_WORD_LEN 1
+#define EIATTR_SW2861232_WAR_ATTR_WORD_LEN 1
+
+#define EIATTR_SW2393858_WAR 0x3001
+#define EIATTR_SW2393858_WAR_ATTR_WORD_LEN 1
+
+#define EIATTR_SW1850030_WAR 0x2a01
+#define EIATTR_SW1850030_WAR_ATTR_WORD_LEN 1
+
+#define EIATTR_SW_WAR 0x3604
+#define EIATTR_SW_WAR_ATTR_WORD_LEN 2
+
+#define EIATTR_S2RCTAID_INSTR_OFFSETS 0x1d04
+#define EIATTR_S2RCTAID_INSTR_OFFSETS_ATTR_BASE_WORD_LEN 1
 
 #define EIATTR_EXTERNS 0x0f04
 #define EIATTR_EXTERNS_ATTR_WORD_LEN 2
@@ -1078,11 +1112,12 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             auto target_function_name = section_name.substr(9);
             const char *data = section->get_data();
 
-            int off;
+            size_t off;
             for (off = 0; off < section->get_size();) {
                 const auto *line = reinterpret_cast<const NvU32 *>(data + off);
                 NvU32 key = line[0];
                 NvU16 type = key & 0xffff;
+                NvU16 other = (key >> 16) & 0xffff;
 
                 // this seems to indicate the end of attributes in some cases
                 if (key == 0xffffffff) {
@@ -1132,7 +1167,24 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         break;
                     }
                     case EIATTR_SW2861232_WAR: {
-                        off += (EIATTR_SW2861232_ATTR_WORD_LEN * sizeof(NvU32));
+                        off += (EIATTR_SW2861232_WAR_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_SW2393858_WAR: {
+                        off += (EIATTR_SW2393858_WAR_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_SW1850030_WAR: {
+                        off += (EIATTR_SW1850030_WAR_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_S2RCTAID_INSTR_OFFSETS: {
+                        off += EIATTR_S2RCTAID_INSTR_OFFSETS_ATTR_BASE_WORD_LEN * sizeof(NvU32);
+                        off += other;
+                        break;
+                    }
+                    case EIATTR_SW_WAR: {
+                        off += EIATTR_SW_WAR_ATTR_WORD_LEN * sizeof(NvU32);
                         break;
                     }
                     case EIATTR_EXIT_INSTR_OFFSETS: {
@@ -1326,8 +1378,7 @@ libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut, uint32_t flags)
 
 libreCudaStatus_t libreCuStreamCommence(LibreCUstream stream) {
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->startExecution(COMPUTE));
-    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->startExecution(DMA));
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->startExecution());
     LIBRECUDA_SUCCEED();
 }
 

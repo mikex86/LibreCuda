@@ -30,12 +30,14 @@ struct LibreCUdevice_ {
     NvU32 compute_class;
 };
 
+#define UVM_HEAP_START 0x1000000000
+
 struct LibreCUcontext_ {
     int device_fd;
     int flags;
     LibreCUdevice device;
     NvHandle device_handle;
-    NvU64 uvm_vaddr = 0x1000000000;
+    NvU64 uvm_vaddr = UVM_HEAP_START;
     NvHandle va_space_handle{};
 
     GPFifo compute_gpfifo;
@@ -164,5 +166,11 @@ gpuSystemAlloc(LibreCUcontext ctx, size_t size, bool mapToCpu, NvU32 mapFlags,
                NvU64 *pVaOut, NvHandle *pMemoryHandleOut = nullptr);
 
 libreCudaStatus_t gpuFree(LibreCUcontext ctx, NvU64 virtualAddress);
+
+/**
+ * Returns if the pointer is a device pointer.
+ * This does not mean the ptr is still allocated. It just means it is or was a device pointer.
+ */
+bool isDevicePtr(void *ptr);
 
 #endif //LIBRECUDA_LIBRECUDA_INTERNAL_H

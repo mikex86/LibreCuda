@@ -106,10 +106,9 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
         }
     }
 
-    // create timeline signals
+    // create timeline signal
     {
-        LIBRECUDA_ERR_PROPAGATE(obtainSignal(&computeTimelineSignal));
-        LIBRECUDA_ERR_PROPAGATE(obtainSignal(&dmaTimelineSignal));
+        LIBRECUDA_ERR_PROPAGATE(obtainSignal(&timelineSignal));
     }
 
     // setup compute queue
@@ -131,7 +130,7 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
                         COMPUTE
                 )
         );
-        computeTimelineCtr++;
+        timelineCtr++;
     }
     LIBRECUDA_ERR_PROPAGATE(startExecution(COMPUTE));
     LIBRECUDA_ERR_PROPAGATE(awaitExecution(COMPUTE));
@@ -141,7 +140,7 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
         LIBRECUDA_ERR_PROPAGATE(
                 enqueue(makeNvMethod(4, NVC6C0_SET_OBJECT, 1), {AMPERE_DMA_COPY_B}, DMA)
         );
-        dmaTimelineCtr++;
+        timelineCtr++;
     }
 
     LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
@@ -243,8 +242,7 @@ NvCommandQueue::~NvCommandQueue() {
     // we unfortunately can't validate errors in the destructor,
     // but this is fairly safe and shouldn't fail unless somebody
     // frees the pool or command page
-    releaseSignal(computeTimelineSignal);
-    releaseSignal(dmaTimelineSignal);
+    releaseSignal(timelineSignal);
 
     gpuFree(ctx, reinterpret_cast<NvU64>(signalPool));
     gpuFree(ctx, reinterpret_cast<NvU64>(computeQueuePage.commandQueueSpace));
@@ -253,10 +251,8 @@ NvCommandQueue::~NvCommandQueue() {
 }
 
 libreCudaStatus_t NvCommandQueue::awaitExecution(QueueType queueType) {
-    auto &timelineSignal = queueType == COMPUTE ? computeTimelineSignal : dmaTimelineSignal;
-    auto timelineCtr = queueType == COMPUTE ? computeTimelineCtr : dmaTimelineCtr;
     LIBRECUDA_VALIDATE(timelineSignal != nullptr, LIBRECUDA_ERROR_NOT_INITIALIZED);
-    LIBRECUDA_ERR_PROPAGATE(signalWait(timelineSignal, timelineCtr));
+    LIBRECUDA_ERR_PROPAGATE(signalWaitCpu(timelineSignal, timelineCtr));
     LIBRECUDA_SUCCEED();
 }
 
@@ -309,7 +305,7 @@ libreCudaStatus_t NvCommandQueue::signalNotify(NvSignal *pSignal, NvU32 signalTa
                     makeNvMethod(4, NVC6B5_LAUNCH_DMA, 1),
                     {0x14}, // also don't know what this means
                     DMA
-            ))
+            ));
             break;
         }
     }
@@ -317,7 +313,7 @@ libreCudaStatus_t NvCommandQueue::signalNotify(NvSignal *pSignal, NvU32 signalTa
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t NvCommandQueue::signalWait(NvSignal *pSignal, NvU32 signalTarget) {
+libreCudaStatus_t NvCommandQueue::signalWaitCpu(NvSignal *pSignal, NvU32 signalTarget) {
     LIBRECUDA_VALIDATE(pSignal != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
 
     // handle default case if none specified
@@ -343,8 +339,6 @@ libreCudaStatus_t NvCommandQueue::signalWait(NvSignal *pSignal, NvU32 signalTarg
 }
 
 libreCudaStatus_t NvCommandQueue::startExecution(QueueType queueType) {
-    auto &timelineSignal = queueType == COMPUTE ? computeTimelineSignal : dmaTimelineSignal;
-    auto timelineCtr = queueType == COMPUTE ? computeTimelineCtr : dmaTimelineCtr;
     LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, queueType));
     LIBRECUDA_ERR_PROPAGATE(submitToFifo(
             queueType
@@ -440,11 +434,8 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
                 },
                 COMPUTE
         ));
-        computeTimelineCtr++;
+        timelineCtr++;
     }
-
-    startExecution(COMPUTE);
-    awaitExecution(COMPUTE);
 
     LIBRECUDA_SUCCEED();
 }
@@ -462,6 +453,14 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     LIBRECUDA_VALIDATE(numParams == function->param_info.size(), LIBRECUDA_ERROR_INVALID_VALUE);
 
     LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function->local_mem_req));
+
+    if (dmaCommandBuffer.empty()) {
+        currentQueueType = COMPUTE;
+    }
+    if (currentQueueType == DMA) {
+        backlogCurrentCmdBuffer(DMA);
+        currentQueueType = COMPUTE;
+    }
 
     // prepare constbuf0
     NvU32 constbuf0_data[88] = {};
@@ -673,7 +672,7 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
                 COMPUTE
         ));
     }
-    computeTimelineCtr++;
+    timelineCtr++;
     LIBRECUDA_SUCCEED();
 }
 
@@ -682,6 +681,16 @@ libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numByte
     LIBRECUDA_VALIDATE(dst != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(src != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(numBytes < UINT32_MAX, LIBRECUDA_ERROR_INVALID_VALUE);
+
+    if (computeCommandBuffer.empty() && currentQueueType == COMPUTE) {
+        currentQueueType = DMA;
+    }
+
+    // sync with compute queue
+    if (currentQueueType == COMPUTE) {
+        backlogCurrentCmdBuffer(COMPUTE);
+        currentQueueType = DMA;
+    }
 
     LIBRECUDA_ERR_PROPAGATE(enqueue(
             makeNvMethod(4, NVC6B5_OFFSET_IN_UPPER, 4),
@@ -712,7 +721,72 @@ libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numByte
             },
             DMA
     ));
-    dmaTimelineCtr++;
+    timelineCtr++;
 
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::backlogCurrentCmdBuffer(QueueType queueType) {
+    switch (queueType) {
+        case COMPUTE: {
+            if (computeCommandBuffer.empty()) {
+                return LIBRECUDA_SUCCESS;
+            }
+            commandBufBacklog.push_back(CommandBufSplit{
+                    .commandBuffer=computeCommandBuffer,
+                    .queueType=COMPUTE,
+                    .timelineCtr=timelineCtr
+            });
+            computeCommandBuffer.clear();
+            break;
+        }
+        case DMA: {
+            if (dmaCommandBuffer.empty()) {
+                return LIBRECUDA_SUCCESS;
+            }
+            commandBufBacklog.push_back(CommandBufSplit{
+                    .commandBuffer=dmaCommandBuffer,
+                    .queueType=DMA,
+                    .timelineCtr=timelineCtr
+            });
+            dmaCommandBuffer.clear();
+            break;
+        }
+    }
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::startExecution() {
+    if (!commandBufBacklog.empty()) {
+        backlogCurrentCmdBuffer(COMPUTE);
+        backlogCurrentCmdBuffer(DMA);
+
+        for (const auto &backlog_entry: commandBufBacklog) {
+            switch (backlog_entry.queueType) {
+                case COMPUTE: {
+                    computeCommandBuffer = backlog_entry.commandBuffer;
+                    break;
+                }
+                case DMA: {
+                    dmaCommandBuffer = backlog_entry.commandBuffer;
+                    break;
+                }
+            }
+            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, backlog_entry.timelineCtr, backlog_entry.queueType));
+            LIBRECUDA_ERR_PROPAGATE(submitToFifo(backlog_entry.queueType));
+            LIBRECUDA_ERR_PROPAGATE(signalWaitCpu(timelineSignal, backlog_entry.timelineCtr));
+        }
+        commandBufBacklog.clear();
+    } else {
+        if (!computeCommandBuffer.empty()) {
+            LIBRECUDA_ERR_PROPAGATE(startExecution(COMPUTE));
+            LIBRECUDA_ERR_PROPAGATE(awaitExecution(COMPUTE));
+        }
+        if (!dmaCommandBuffer.empty()) {
+            LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
+            LIBRECUDA_ERR_PROPAGATE(awaitExecution(DMA));
+        }
+    }
+    kernArgsWriteIdx = 0; // reset kern args write idx
     LIBRECUDA_SUCCEED();
 }

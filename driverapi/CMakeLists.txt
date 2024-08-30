@@ -3,6 +3,9 @@ set(
         src/librecuda.cpp
         src/librecuda_status.cpp
         src/cmdqueue.cpp
+        src/memcopy.cpp
+        internal/memcopy.h
+        internal/memcopy_kernel.h
 )
 
 add_library(driverapi SHARED ${DRIVERAPI_SOURCES})

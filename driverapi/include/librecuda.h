@@ -83,7 +83,19 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
                                                        uint32_t sharedMemBytes, LibreCUstream stream,
                                                        void **kernelParams, size_t numParams,
                                                        void **extra);
-
+/**
+ * Submits the built up command buffer to the gpu.
+ * Operations performed on streams fall into two types: "compute" (eg. launch kernel) and "dma".
+ * "dma" operations are eg. host to device / device to host memcpy operations.
+ * NOTE: Device to device copies are implemented as a compute kernel, so they DO NOT COUNT AS DMA!
+ * If only operations of a single type are performed, commence will not block and return near instantly.
+ * To correctly interleave compute and dma operations, not all operations can be dispatched immediately and cpu-side
+ * waiting is required to dispatch operations in order.
+ * The more context switches between "compute" and "dma" mode you encounter, the more often cpu-side synchronization can
+ * slow down execution of the timeline.
+ * libreCuStreamCommence will block for the same amount of time as if libreCuStreamAwait was called, however
+ * this behavior should not be relied upon. Always call libreCuStreamAwait for safety.
+ */
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuStreamCommence(LibreCUstream stream);
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuStreamAwait(LibreCUstream stream);
 

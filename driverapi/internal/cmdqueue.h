@@ -44,6 +44,17 @@ struct CommandQueuePage {
 
 };
 
+/**
+ * Represents a region of the command buffer attributable to a particular QueueType in sequential time space.
+ * These splits are necessary to interleave COMPUTE and DMA calls while preserving sequentiality
+ */
+struct CommandBufSplit {
+public:
+    std::vector<NvU32> commandBuffer{};
+    QueueType queueType;
+    NvU32 timelineCtr;
+};
+
 class NvCommandQueue {
 private:
     /**
@@ -66,6 +77,7 @@ private:
      * - vararg NvU32 expected by method (tightly packed arguments) ; size is encoded in the NvMethod bit structure
      */
     std::vector<NvU32> computeCommandBuffer{}, dmaCommandBuffer{};
+
 
     /**
      * compute queue page & stack ptr
@@ -90,7 +102,7 @@ private:
     /**
      * Primary signal used for synchronization
      */
-    NvSignal *computeTimelineSignal{}, *dmaTimelineSignal{};
+    NvSignal *timelineSignal{};
 
     /**
      * Incrementing counter used for synchronization.
@@ -101,7 +113,25 @@ private:
      * The intuition here is that the timelineCtr advances first, as the queue is built, and the signal's value advances
      * to meet the timelineCtr. If they are equal, there is no async operation pending.
      */
-    NvU32 computeTimelineCtr = 0, dmaTimelineCtr = 0;
+    NvU32 timelineCtr = 0;
+
+    // TODO: To my knowledge there is no way to interleave COMPUTE and DMA queues with synchronization primitives.
+    //  You can release semaphores on a DMA queue, but not acquire it. You need both for bi-directional sync.
+    /**
+     * The current queue mode.
+     * When a kernel is launched, the queue mode is switched over to COMPUTE.
+     * When eg. a memcpy is performed, the queue mode is switched to DMA.
+     * Whenever you switch between COMPUTE and DMA, we have to split into multiple command queues that we wait for to complete on the cpu.
+     * It is an unfortunate necessity. This is why interleaving DMA and compute operations should be avoided with librecuda in
+     * highly performance critical applications. (it won't be the end of the world, but its not nice...)
+     * (I also highly doubt real cuda does this any better)
+     */
+    QueueType currentQueueType;
+
+    /**
+     * Backlog of command buffer splits for interleaving queue types
+     */
+    std::vector<CommandBufSplit> commandBufBacklog{};
 
     /**
      * Virtual address of shader local memory used for shaders/kernels.
@@ -138,6 +168,8 @@ public:
 
     libreCudaStatus_t startExecution(QueueType queueType);
 
+    libreCudaStatus_t startExecution();
+
     /**
      * Waits for the pending operations in the currently executing command queue to complete
      */
@@ -166,11 +198,13 @@ private:
 
     libreCudaStatus_t signalNotify(NvSignal *pSignal, NvU32 signalTarget, QueueType type);
 
-    libreCudaStatus_t signalWait(NvSignal *pSignal, NvU32 signalTarget);
+    libreCudaStatus_t signalWaitCpu(NvSignal *pSignal, NvU32 signalTarget);
 
     libreCudaStatus_t submitToFifo(QueueType type);
 
     libreCudaStatus_t allocKernArgs(NvU64 *pMemOut, size_t size);
+
+    libreCudaStatus_t backlogCurrentCmdBuffer(QueueType queueType);
 };
 
 #endif //LIBRECUDA_CMDQUEUE_H

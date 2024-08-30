@@ -38,14 +38,19 @@ int main() {
     float dst_host_array[10] = {};
 
     // allocate memory
-    float *device_array{};
-    CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array), sizeof(host_array)));
+    float *device_array_1{};
+    float *device_array_2{};
+    CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_1), sizeof(host_array)));
+    CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_2), sizeof(host_array)));
 
     // copy to gpu
-    CUDA_CHECK(libreCuMemCpy(device_array, host_array, sizeof(host_array), stream));
+    CUDA_CHECK(libreCuMemCpy(device_array_1, host_array, sizeof(host_array), stream));
+
+    // copy d2d
+    CUDA_CHECK(libreCuMemCpy(device_array_2, device_array_1, sizeof(host_array), stream));
 
     // copy back to host
-    CUDA_CHECK(libreCuMemCpy(dst_host_array, device_array, sizeof(host_array), stream));
+    CUDA_CHECK(libreCuMemCpy(dst_host_array, device_array_1, sizeof(host_array), stream));
 
     // commence stream
     CUDA_CHECK(libreCuStreamCommence(stream));
@@ -60,7 +65,8 @@ int main() {
     CUDA_CHECK(libreCuStreamDestroy(stream));
 
     // free memory
-    CUDA_CHECK(libreCuMemFree(device_array));
+    CUDA_CHECK(libreCuMemFree(device_array_1));
+    CUDA_CHECK(libreCuMemFree(device_array_2));
 
     // destroy ctx
     CUDA_CHECK(libreCuCtxDestroy(ctx));
