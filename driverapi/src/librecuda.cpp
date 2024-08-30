@@ -1204,7 +1204,6 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                 .num_registers=function_regs[func_name],
                 .local_mem_req=function_local_mem_reqs[func_name],
                 .function_size=function_sizes[func_name],
-                .dyn_shared_mem_va=0,
                 .constants=constants[func_name],
                 .param_info=param_infos[func_name]
         });
@@ -1379,7 +1378,8 @@ libreCudaStatus_t libreCuDeviceGetAttribute(int *pValOut, LibreCuDeviceAttribute
             break;
         }
         case CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN: {
-            int result; // base result
+            int result;
+
             NV2080_CTRL_MC_GET_ARCH_INFO_PARAMS params{};
             RM_CTRL(fd_ctl, NV2080_CTRL_CMD_MC_GET_ARCH_INFO, root, current_ctx->device_handle, &params,
                     sizeof(params));
