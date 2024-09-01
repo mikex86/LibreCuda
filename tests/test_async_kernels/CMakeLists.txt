@@ -1,7 +1,6 @@
 add_executable(
         test_async_kernels
         main.cpp
-        ../kernel_struct_param/main.cpp
 )
 target_link_libraries(
         test_async_kernels
