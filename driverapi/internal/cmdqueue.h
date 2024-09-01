@@ -134,12 +134,6 @@ private:
     std::vector<CommandBufSplit> commandBufBacklog{};
 
     /**
-     * Virtual address of shader local memory used for shaders/kernels.
-     * Only needs one instance > max required local memory of any kernels, as only one kernels can run at a time
-     */
-    void *shaderLocalMemoryVa = nullptr;
-
-    /**
      * Current shader local memory per thread. NOT equal to the allocated size of localMemoryVa, but correlates.
      */
     size_t currentSlmPerThread = 0;
@@ -177,7 +171,7 @@ public:
 
     ~NvCommandQueue();
 
-    libreCudaStatus_t ensureEnoughLocalMem(NvU32 localMemReq);
+    libreCudaStatus_t ensureEnoughLocalMem(LibreCUFunction function);
 
     libreCudaStatus_t
     launchFunction(LibreCUFunction function,

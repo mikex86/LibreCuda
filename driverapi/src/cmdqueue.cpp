@@ -385,13 +385,14 @@ static inline NvU32 roundUp(NvU32 a, NvU32 b) {
 }
 
 
-libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
+libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(LibreCUFunction function) {
+    NvU32 localMemReq = function->local_mem_req;
     if (localMemReq <= currentSlmPerThread) {
         return LIBRECUDA_SUCCESS; // no action required, local memory is enough
     }
 
-    if (shaderLocalMemoryVa != nullptr) {
-        LIBRECUDA_ERR_PROPAGATE(gpuFree(ctx, reinterpret_cast<NvU64>(shaderLocalMemoryVa)));
+    if (function->shader_local_memory_va != 0) {
+        LIBRECUDA_ERR_PROPAGATE(gpuFree(ctx, function->shader_local_memory_va));
     }
 
     currentSlmPerThread = ceilDiv(localMemReq, 32u) * 32; // round up
@@ -407,7 +408,7 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
                     true,
                     false,
                     0,
-                    reinterpret_cast<NvU64 *>(&shaderLocalMemoryVa)
+                    &function->shader_local_memory_va
             )
     );
 
@@ -417,8 +418,8 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
                 makeNvMethod(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_A, 2),
                 {
                         // weird half big and little endian along int borders again...
-                        U64_HI_32_BITS(shaderLocalMemoryVa),
-                        U64_LO_32_BITS(shaderLocalMemoryVa)
+                        U64_HI_32_BITS(function->shader_local_memory_va),
+                        U64_LO_32_BITS(function->shader_local_memory_va)
                 },
                 COMPUTE
         ));
@@ -457,7 +458,7 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     bool local_mem_changed;
     {
         auto pre_ctr = timelineCtr;
-        LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function->local_mem_req));
+        LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function));
         local_mem_changed = timelineCtr > pre_ctr;
     }
 
@@ -518,7 +519,8 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
 
             size_t j = 0;
             for (size_t i = 0; i < numParams; i++) {
-                switch (function->param_info[i].param_size) {
+                size_t param_size = function->param_info[i].param_size;
+                switch (param_size) {
                     case 8: {
                         auto *param_ptr = reinterpret_cast<NvU64 *>(params[i]);
                         auto param_value = *param_ptr;
@@ -684,7 +686,9 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
         ));
     }
     timelineCtr++;
-    LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
+    if (!async) {
+        LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
+    }
     LIBRECUDA_SUCCEED();
 }
 
@@ -734,6 +738,10 @@ libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numByte
             DMA
     ));
     timelineCtr++;
+    // TODO: THERE SEEM TO BE SERIOUS PROBLEMS WITH DMA CHRONOLOGY GIVEN THERE IS NO WAY TO WAIT FOR SEMAPHORES...
+    //  NEED MORE TESTING!
+    //  This signalNotify might also not be needed at all, try to design a similar async system as in COMPUTE
+    //  for DMA if possible..., else more CPU involvement is required for chronological DMA operations
     LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
     LIBRECUDA_SUCCEED();
 }
@@ -784,15 +792,20 @@ libreCudaStatus_t NvCommandQueue::startExecution() {
                     break;
                 }
             }
+            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, backlog_entry.timelineCtr, backlog_entry.queueType));
             LIBRECUDA_ERR_PROPAGATE(submitToFifo(backlog_entry.queueType));
             LIBRECUDA_ERR_PROPAGATE(signalWaitCpu(timelineSignal, backlog_entry.timelineCtr));
         }
         commandBufBacklog.clear();
     } else {
         if (!computeCommandBuffer.empty()) {
+            LIBRECUDA_VALIDATE(dmaCommandBuffer.empty(), LIBRECUDA_ERROR_UNKNOWN);
+            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
             LIBRECUDA_ERR_PROPAGATE(startExecution(COMPUTE));
         }
         if (!dmaCommandBuffer.empty()) {
+            LIBRECUDA_VALIDATE(computeCommandBuffer.empty(), LIBRECUDA_ERROR_UNKNOWN);
+            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
             LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
         }
     }

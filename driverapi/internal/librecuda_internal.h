@@ -82,6 +82,12 @@ struct LibreCUFunction_ {
     NvU64 function_size;
     std::vector<KernelConstantInfo> constants;
     std::vector<KernelParamInfo> param_info;
+
+    /**
+     * Virtual address of shader local memory used for shaders/kernels.
+     */
+    NvU64 shader_local_memory_va{};
+
 };
 
 struct LibreCUstream_ {

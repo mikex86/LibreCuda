@@ -1354,11 +1354,16 @@ libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t libreCuModuleUnload(LibreCUmodule function) {
+libreCudaStatus_t libreCuModuleUnload(LibreCUmodule module) {
     LIBRECUDA_ENSURE_CTX_VALID();
-    LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    LIBRECUDA_ERR_PROPAGATE(gpuFree(current_ctx, function->module_va_addr));
-    delete function;
+    LIBRECUDA_VALIDATE(module != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_ERR_PROPAGATE(gpuFree(current_ctx, module->module_va_addr));
+    for (auto &function: module->functions) {
+        if (function.shader_local_memory_va != 0) {
+            LIBRECUDA_ERR_PROPAGATE(gpuFree(current_ctx, function.shader_local_memory_va));
+        }
+    }
+    delete module;
     LIBRECUDA_SUCCEED();
 }
 
