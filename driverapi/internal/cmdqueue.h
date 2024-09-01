@@ -53,6 +53,7 @@ public:
     std::vector<NvU32> commandBuffer{};
     QueueType queueType;
     NvU32 timelineCtr;
+    bool timelineNotifyPending;
 };
 
 class NvCommandQueue {
@@ -114,6 +115,13 @@ private:
      * to meet the timelineCtr. If they are equal, there is no async operation pending.
      */
     NvU32 timelineCtr = 0;
+
+    /**
+     * State whether the last command that incremented the timeline also issued a signalNotify() command.
+     * If this flag is true and the stream is commenced, a trailing signalNotify() has to be inserted.
+     * Otherwise this is not necessary as the last COMPUTE/DMA command already issued it.
+     */
+    bool timelineNotifyPending = false;
 
     // TODO: To my knowledge there is no way to interleave COMPUTE and DMA queues with synchronization primitives.
     //  You can release semaphores on a DMA queue, but not acquire it. You need both for bi-directional sync.
@@ -180,7 +188,7 @@ public:
                    uint32_t sharedMemBytes,
                    void **params, size_t numParams, bool async);
 
-    libreCudaStatus_t gpuMemcpy(void *dst, void *src, size_t numBytes);
+    libreCudaStatus_t gpuMemcpy(void *dst, void *src, size_t numBytes, bool async);
 
 private:
 

@@ -1,0 +1,9 @@
+add_executable(
+        test_dma_chronological_consistency
+        main.cpp
+)
+target_link_libraries(
+        test_dma_chronological_consistency
+        PRIVATE
+        driverapi
+)

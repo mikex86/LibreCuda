@@ -435,8 +435,6 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(LibreCUFunction function)
                 },
                 COMPUTE
         ));
-        timelineCtr++;
-        LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
     }
 
     LIBRECUDA_SUCCEED();
@@ -455,23 +453,24 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(numParams == function->param_info.size(), LIBRECUDA_ERROR_INVALID_VALUE);
 
-    bool local_mem_changed;
-    {
-        auto pre_ctr = timelineCtr;
-        LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function));
-        local_mem_changed = timelineCtr > pre_ctr;
-    }
-
-    if (!async || local_mem_changed) {
-        LIBRECUDA_ERR_PROPAGATE(signalWaitGpu(timelineSignal, timelineCtr));
-    }
-
     if (dmaCommandBuffer.empty()) {
         currentQueueType = COMPUTE;
     }
     if (currentQueueType == DMA) {
         backlogCurrentCmdBuffer(DMA);
         currentQueueType = COMPUTE;
+    }
+
+    LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function));
+
+
+    if (!async && timelineNotifyPending) {
+        LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
+        timelineNotifyPending = false;
+    }
+
+    if (!async) {
+        LIBRECUDA_ERR_PROPAGATE(signalWaitGpu(timelineSignal, timelineCtr));
     }
 
     // prepare constbuf0
@@ -688,21 +687,29 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     timelineCtr++;
     if (!async) {
         LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
+        timelineNotifyPending = false;
+    } else {
+        // when async, we cannot do a signalNotify! This prevents parallelism, so we only do one
+        // signalNotify at the end to advance the timelineSignal to the timelineCtr at once, which
+        // may have been incremented multiple times.
+        // timelineNotifyPending tells startExecution that we have to issue a signalNotify at the end
+        // because a previous async kernel launch will not have issued this.
+        // Without this, we would wait forever because the gpu would never modify the timelineSignal at all.
+        timelineNotifyPending = true;
     }
     LIBRECUDA_SUCCEED();
 }
 
 
-libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numBytes) {
+libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numBytes, bool async) {
     LIBRECUDA_VALIDATE(dst != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(src != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(numBytes < UINT32_MAX, LIBRECUDA_ERROR_INVALID_VALUE);
 
-    if (computeCommandBuffer.empty() && currentQueueType == COMPUTE) {
+    if (computeCommandBuffer.empty()) {
         currentQueueType = DMA;
     }
 
-    // sync with compute queue
     if (currentQueueType == COMPUTE) {
         backlogCurrentCmdBuffer(COMPUTE);
         currentQueueType = DMA;
@@ -738,11 +745,15 @@ libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numByte
             DMA
     ));
     timelineCtr++;
-    // TODO: THERE SEEM TO BE SERIOUS PROBLEMS WITH DMA CHRONOLOGY GIVEN THERE IS NO WAY TO WAIT FOR SEMAPHORES...
-    //  NEED MORE TESTING!
-    //  This signalNotify might also not be needed at all, try to design a similar async system as in COMPUTE
-    //  for DMA if possible..., else more CPU involvement is required for chronological DMA operations
-    LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
+
+    // same logic as for COMPUTE applies to DMA.
+    if (!async) {
+        LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
+        timelineNotifyPending = false;
+    } else {
+        timelineNotifyPending = true;
+    }
+
     LIBRECUDA_SUCCEED();
 }
 
@@ -755,7 +766,8 @@ libreCudaStatus_t NvCommandQueue::backlogCurrentCmdBuffer(QueueType queueType) {
             commandBufBacklog.push_back(CommandBufSplit{
                     .commandBuffer=computeCommandBuffer,
                     .queueType=COMPUTE,
-                    .timelineCtr=timelineCtr
+                    .timelineCtr=timelineCtr,
+                    .timelineNotifyPending=timelineNotifyPending
             });
             computeCommandBuffer.clear();
             break;
@@ -767,12 +779,14 @@ libreCudaStatus_t NvCommandQueue::backlogCurrentCmdBuffer(QueueType queueType) {
             commandBufBacklog.push_back(CommandBufSplit{
                     .commandBuffer=dmaCommandBuffer,
                     .queueType=DMA,
-                    .timelineCtr=timelineCtr
+                    .timelineCtr=timelineCtr,
+                    .timelineNotifyPending=timelineNotifyPending
             });
             dmaCommandBuffer.clear();
             break;
         }
     }
+    timelineNotifyPending = false;
     LIBRECUDA_SUCCEED();
 }
 
@@ -792,22 +806,35 @@ libreCudaStatus_t NvCommandQueue::startExecution() {
                     break;
                 }
             }
-            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, backlog_entry.timelineCtr, backlog_entry.queueType));
+            if (backlog_entry.timelineNotifyPending) {
+                LIBRECUDA_ERR_PROPAGATE(
+                        signalNotify(timelineSignal, backlog_entry.timelineCtr, backlog_entry.queueType)
+                );
+            }
             LIBRECUDA_ERR_PROPAGATE(submitToFifo(backlog_entry.queueType));
             LIBRECUDA_ERR_PROPAGATE(signalWaitCpu(timelineSignal, backlog_entry.timelineCtr));
         }
         commandBufBacklog.clear();
     } else {
-        if (!computeCommandBuffer.empty()) {
+        if (currentQueueType == COMPUTE) {
             LIBRECUDA_VALIDATE(dmaCommandBuffer.empty(), LIBRECUDA_ERROR_UNKNOWN);
-            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
+
+            // only issue signalNotify if last command didn't already do that
+            if (timelineNotifyPending) {
+                LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
+            }
             LIBRECUDA_ERR_PROPAGATE(startExecution(COMPUTE));
         }
-        if (!dmaCommandBuffer.empty()) {
+        if (currentQueueType == DMA) {
             LIBRECUDA_VALIDATE(computeCommandBuffer.empty(), LIBRECUDA_ERROR_UNKNOWN);
-            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
+
+            // only issue signalNotify if last command didn't already do that
+            if (timelineNotifyPending) {
+                LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
+            }
             LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
         }
+        timelineNotifyPending = false;
     }
     LIBRECUDA_SUCCEED();
 }

@@ -128,7 +128,33 @@ int main() {
     CUDA_CHECK(libreCuStreamCommence(stream));
     CUDA_CHECK(libreCuStreamAwait(stream));
     end = std::chrono::high_resolution_clock::now();
-    std::cout << "5xParallel kernel took: "
+    std::cout << "5xAsync kernel took: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+              << "ms" << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
+    {
+        void *params[] = {
+                &float_dst_compute_va, &float_dst_dma_va
+        };
+        for (int i = 0; i < 5; i++) {
+            CUDA_CHECK(
+                    libreCuLaunchKernel(func,
+                                        1, 1, 1,
+                                        1, 1, 1,
+                                        0,
+                                        stream,
+                                        params, sizeof(params) / sizeof(void *),
+                                        nullptr,
+                                        false
+                    )
+            );
+        }
+    }
+    CUDA_CHECK(libreCuStreamCommence(stream));
+    CUDA_CHECK(libreCuStreamAwait(stream));
+    end = std::chrono::high_resolution_clock::now();
+    std::cout << "5xSync kernel took: "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
               << "ms" << std::endl;
 

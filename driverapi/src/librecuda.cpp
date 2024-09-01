@@ -793,16 +793,16 @@ libreCudaStatus_t libreCuMemFree(void *devicePointer) {
     LIBRECUDA_SUCCEED();
 }
 
-libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount, LibreCUstream stream) {
+libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount, LibreCUstream stream, bool async) {
     LIBRECUDA_VALIDATE(dst != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(src != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ENSURE_CTX_VALID();
     if (isDevicePtr(dst) && isDevicePtr(src)) {
         // is d2d copy
-        memcpyD2D(dst, src, byteCount, stream);
+        memcpyD2D(dst, src, byteCount, stream, async);
     } else {
-        stream->command_queue->gpuMemcpy(dst, src, byteCount);
+        stream->command_queue->gpuMemcpy(dst, src, byteCount, async);
     }
     LIBRECUDA_SUCCEED();
 }
@@ -1385,6 +1385,7 @@ libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut, uint32_t flags)
     };
     LIBRECUDA_SUCCEED();
 }
+
 
 libreCudaStatus_t libreCuStreamCommence(LibreCUstream stream) {
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);

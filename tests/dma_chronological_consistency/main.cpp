@@ -30,35 +30,58 @@ int main() {
     CUDA_CHECK(libreCuStreamCreate(&stream, 0));
 
     // declare host array
-    float host_array[] = {
-            1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f
-    };
+    uint8_t host_array[1024 * 1024 + 128 + 3]{}; // size chosen to require all 3 memcpy hierarchy kernels to be launched
+    for (size_t i = 0; i < sizeof(host_array); i++) {
+        host_array[i] = i % 256;
+    }
 
     // declare host array
-    float dst_host_array[10] = {};
+    uint8_t dst_host_array[sizeof(host_array)] = {};
 
     // allocate memory
-    float *device_array_1{};
-    float *device_array_2{};
+    uint8_t *device_array_1{};
+    uint8_t *device_array_2{};
+    uint8_t *device_array_3{};
+    uint8_t *device_array_4{};
+    uint8_t *device_array_5{};
+    uint8_t *device_array_6{};
     CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_1), sizeof(host_array)));
     CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_2), sizeof(host_array)));
+    CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_3), sizeof(host_array)));
+    CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_4), sizeof(host_array)));
+    CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_5), sizeof(host_array)));
+    CUDA_CHECK(libreCuMemAlloc(reinterpret_cast<void **>(&device_array_6), sizeof(host_array)));
 
     // copy to gpu
     CUDA_CHECK(libreCuMemCpy(device_array_1, host_array, sizeof(host_array), stream));
 
     // copy d2d
     CUDA_CHECK(libreCuMemCpy(device_array_2, device_array_1, sizeof(host_array), stream));
+    CUDA_CHECK(libreCuMemCpy(device_array_3, device_array_2, sizeof(host_array), stream));
+    CUDA_CHECK(libreCuMemCpy(device_array_4, device_array_3, sizeof(host_array), stream));
+    CUDA_CHECK(libreCuMemCpy(device_array_5, device_array_4, sizeof(host_array), stream));
+    CUDA_CHECK(libreCuMemCpy(device_array_6, device_array_5, sizeof(host_array), stream));
 
     // copy back to host
-    CUDA_CHECK(libreCuMemCpy(dst_host_array, device_array_2, sizeof(host_array), stream));
+    CUDA_CHECK(libreCuMemCpy(dst_host_array, device_array_6, sizeof(host_array), stream));
 
     // commence stream
     CUDA_CHECK(libreCuStreamCommence(stream));
     CUDA_CHECK(libreCuStreamAwait(stream));
 
     // print device array
-    for (int i = 0; i < 10; i++) {
-        std::cout << dst_host_array[i] << ", ";
+    bool is_equal = true;
+    size_t i;
+    for (i = 0; i < sizeof(host_array); i++) {
+        if (host_array[i] != dst_host_array[i]) {
+            is_equal = false;
+            break;
+        }
+    }
+    if (!is_equal) {
+        std::cerr << "Mismatch at " + std::to_string(i) + ": memcpy screwed something up!" << std::endl;
+    } else {
+        std::cout << "Memory is equal!" << std::endl;
     }
 
     // destroy stream

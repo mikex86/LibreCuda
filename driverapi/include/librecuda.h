@@ -48,7 +48,7 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuCtxGetCurrent(LibreCUcontext *pCtxOut)
 
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuMemAlloc(void **pDevicePointer, size_t bytesize, bool mapToCpu = false);
 
-LIBRECUDA_EXPORT libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount, LibreCUstream stream);
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuMemCpy(void *dst, void *src, size_t byteCount, LibreCUstream stream, bool async = false);
 
 LIBRECUDA_EXPORT libreCudaStatus_t libreCuMemFree(void *devicePointer);
 
@@ -84,6 +84,7 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
                                                        void **kernelParams, size_t numParams,
                                                        void **extra,
                                                        bool async=false);
+
 /**
  * Submits the built up command buffer to the gpu.
  * Operations performed on streams fall into two types: "compute" (eg. launch kernel) and "dma".
