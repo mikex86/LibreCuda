@@ -1,4 +1,4 @@
 add_subdirectory(write_float)
 add_subdirectory(memcopy)
 add_subdirectory(dynamic_shared_mem)
-add_subdirectory(compute_dma_iterleave)
+add_subdirectory(compute_chronological_consistency)

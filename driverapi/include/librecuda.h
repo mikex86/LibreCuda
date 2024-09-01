@@ -82,7 +82,8 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
                                                        uint32_t blockDimZ,
                                                        uint32_t sharedMemBytes, LibreCUstream stream,
                                                        void **kernelParams, size_t numParams,
-                                                       void **extra);
+                                                       void **extra,
+                                                       bool async=false);
 /**
  * Submits the built up command buffer to the gpu.
  * Operations performed on streams fall into two types: "compute" (eg. launch kernel) and "dma".

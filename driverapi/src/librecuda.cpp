@@ -1336,16 +1336,21 @@ libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
                                       uint32_t sharedMemBytes,
                                       LibreCUstream stream,
                                       void **kernelParams, size_t numParams,
-                                      void **extra) {
+                                      void **extra,
+                                      bool async) {
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->launchFunction(function,
-                                                                  gridDimX, gridDimY, gridDimZ,
-                                                                  blockDimX, blockDimY, blockDimZ,
-                                                                  sharedMemBytes,
-                                                                  kernelParams,
-                                                                  numParams
-    ));
+    LIBRECUDA_ERR_PROPAGATE(
+            stream->command_queue->launchFunction(
+                    function,
+                    gridDimX, gridDimY, gridDimZ,
+                    blockDimX, blockDimY, blockDimZ,
+                    sharedMemBytes,
+                    kernelParams,
+                    numParams,
+                    async
+            )
+    );
     LIBRECUDA_SUCCEED();
 }
 
@@ -1385,8 +1390,7 @@ libreCudaStatus_t libreCuStreamCommence(LibreCUstream stream) {
 
 libreCudaStatus_t libreCuStreamAwait(LibreCUstream stream) {
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->awaitExecution(COMPUTE));
-    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->awaitExecution(DMA));
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->awaitExecution());
     LIBRECUDA_SUCCEED();
 }
 

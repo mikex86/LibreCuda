@@ -173,7 +173,7 @@ public:
     /**
      * Waits for the pending operations in the currently executing command queue to complete
      */
-    libreCudaStatus_t awaitExecution(QueueType queueType);
+    libreCudaStatus_t awaitExecution();
 
     ~NvCommandQueue();
 
@@ -184,7 +184,7 @@ public:
                    uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
                    uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
                    uint32_t sharedMemBytes,
-                   void **params, size_t numParams);
+                   void **params, size_t numParams, bool async);
 
     libreCudaStatus_t gpuMemcpy(void *dst, void *src, size_t numBytes);
 
@@ -199,6 +199,14 @@ private:
     libreCudaStatus_t signalNotify(NvSignal *pSignal, NvU32 signalTarget, QueueType type);
 
     libreCudaStatus_t signalWaitCpu(NvSignal *pSignal, NvU32 signalTarget);
+
+    /**
+     * waits on the gpu compute queue until the signal reaches the specified target
+     * @param pSignal the signal
+     * @param signalTarget the target value
+     * @return status
+     */
+    libreCudaStatus_t signalWaitGpu(NvSignal *pSignal, NvU32 signalTarget);
 
     libreCudaStatus_t submitToFifo(QueueType type);
 

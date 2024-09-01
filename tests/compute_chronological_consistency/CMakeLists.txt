@@ -1,9 +1,9 @@
 add_executable(
-        test_compute_dma_interleave
+        test_chronological_consistency
         main.cpp
 )
 target_link_libraries(
-        test_compute_dma_interleave
+        test_chronological_consistency
         PRIVATE
         driverapi
 )

@@ -131,9 +131,10 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
                 )
         );
         timelineCtr++;
+        LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
     }
     LIBRECUDA_ERR_PROPAGATE(startExecution(COMPUTE));
-    LIBRECUDA_ERR_PROPAGATE(awaitExecution(COMPUTE));
+    LIBRECUDA_ERR_PROPAGATE(awaitExecution());
 
     // setup copy queue
     {
@@ -141,10 +142,11 @@ libreCudaStatus_t NvCommandQueue::initializeQueue() {
                 enqueue(makeNvMethod(4, NVC6C0_SET_OBJECT, 1), {AMPERE_DMA_COPY_B}, DMA)
         );
         timelineCtr++;
+        LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
     }
 
     LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
-    LIBRECUDA_ERR_PROPAGATE(awaitExecution(DMA));
+    LIBRECUDA_ERR_PROPAGATE(awaitExecution());
 
     // allocate kernargs page
     {
@@ -250,9 +252,10 @@ NvCommandQueue::~NvCommandQueue() {
     gpuFree(ctx, reinterpret_cast<NvU64>(kernArgsPageVa));
 }
 
-libreCudaStatus_t NvCommandQueue::awaitExecution(QueueType queueType) {
+libreCudaStatus_t NvCommandQueue::awaitExecution() {
     LIBRECUDA_VALIDATE(timelineSignal != nullptr, LIBRECUDA_ERROR_NOT_INITIALIZED);
     LIBRECUDA_ERR_PROPAGATE(signalWaitCpu(timelineSignal, timelineCtr));
+    kernArgsWriteIdx = 0; // reset kern args write idx
     LIBRECUDA_SUCCEED();
 }
 
@@ -339,12 +342,9 @@ libreCudaStatus_t NvCommandQueue::signalWaitCpu(NvSignal *pSignal, NvU32 signalT
 }
 
 libreCudaStatus_t NvCommandQueue::startExecution(QueueType queueType) {
-    LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, queueType));
     LIBRECUDA_ERR_PROPAGATE(submitToFifo(
             queueType
     ));
-
-    kernArgsWriteIdx = 0; // reset kern args write idx
     LIBRECUDA_SUCCEED();
 }
 
@@ -437,6 +437,8 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
         timelineCtr++;
     }
 
+    //LIBRECUDA_ERR_PROPAGATE(signalWaitGpu(timelineSignal, timelineCtr));
+
     LIBRECUDA_SUCCEED();
 }
 
@@ -448,10 +450,13 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
                                uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
                                uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ,
                                uint32_t sharedMemBytes,
-                               void **params, size_t numParams) {
+                               void **params, size_t numParams,
+                               bool async) {
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(numParams == function->param_info.size(), LIBRECUDA_ERROR_INVALID_VALUE);
-
+    if (!async) {
+        LIBRECUDA_ERR_PROPAGATE(signalWaitGpu(timelineSignal, timelineCtr));
+    }
     LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function->local_mem_req));
 
     if (dmaCommandBuffer.empty()) {
@@ -673,6 +678,7 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
         ));
     }
     timelineCtr++;
+    LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
     LIBRECUDA_SUCCEED();
 }
 
@@ -722,7 +728,7 @@ libreCudaStatus_t NvCommandQueue::gpuMemcpy(void *dst, void *src, size_t numByte
             DMA
     ));
     timelineCtr++;
-
+    LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, DMA));
     LIBRECUDA_SUCCEED();
 }
 
@@ -772,7 +778,6 @@ libreCudaStatus_t NvCommandQueue::startExecution() {
                     break;
                 }
             }
-            LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, backlog_entry.timelineCtr, backlog_entry.queueType));
             LIBRECUDA_ERR_PROPAGATE(submitToFifo(backlog_entry.queueType));
             LIBRECUDA_ERR_PROPAGATE(signalWaitCpu(timelineSignal, backlog_entry.timelineCtr));
         }
@@ -780,13 +785,35 @@ libreCudaStatus_t NvCommandQueue::startExecution() {
     } else {
         if (!computeCommandBuffer.empty()) {
             LIBRECUDA_ERR_PROPAGATE(startExecution(COMPUTE));
-            LIBRECUDA_ERR_PROPAGATE(awaitExecution(COMPUTE));
         }
         if (!dmaCommandBuffer.empty()) {
             LIBRECUDA_ERR_PROPAGATE(startExecution(DMA));
-            LIBRECUDA_ERR_PROPAGATE(awaitExecution(DMA));
         }
     }
-    kernArgsWriteIdx = 0; // reset kern args write idx
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::signalWaitGpu(NvSignal *pSignal, NvU32 signalTarget) {
+    if (pSignal->value == signalTarget) {
+        // no need to wait, if cpu can confirm.
+
+        return LIBRECUDA_SUCCESS;
+    }
+    LIBRECUDA_ERR_PROPAGATE(enqueue(
+            makeNvMethod(0, NVC56F_SEM_ADDR_LO, 5),
+            {
+                    // little endian
+                    U64_LO_32_BITS(pSignal),
+                    U64_HI_32_BITS(pSignal),
+
+                    // little endian
+                    signalTarget,
+                    0,
+
+                    (NVC56F_SEM_EXECUTE_OPERATION_ACQUIRE) |
+                    (NVC56F_SEM_EXECUTE_PAYLOAD_SIZE_64BIT << 24)
+            },
+            COMPUTE
+    ));
     LIBRECUDA_SUCCEED();
 }
