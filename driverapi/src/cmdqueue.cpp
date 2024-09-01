@@ -435,6 +435,7 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
                 COMPUTE
         ));
         timelineCtr++;
+        LIBRECUDA_ERR_PROPAGATE(signalNotify(timelineSignal, timelineCtr, COMPUTE));
     }
 
     LIBRECUDA_SUCCEED();
@@ -800,8 +801,9 @@ libreCudaStatus_t NvCommandQueue::startExecution() {
 
 libreCudaStatus_t NvCommandQueue::signalWaitGpu(NvSignal *pSignal, NvU32 signalTarget) {
     if (pSignal->value == signalTarget) {
-        // no need to wait, if cpu can confirm.
-
+        // No need to wait, if cpu can confirm.
+        // if this change is visible, this means it was done on this stream by operations
+        // that were already commenced and have already executed on the GPU.
         return LIBRECUDA_SUCCESS;
     }
     LIBRECUDA_ERR_PROPAGATE(enqueue(

@@ -1,7 +1,6 @@
 #include <librecuda.h>
 
 #include <iostream>
-#include <iomanip>
 #include <vector>
 #include <fstream>
 #include <cstring>
