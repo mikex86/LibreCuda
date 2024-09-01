@@ -437,8 +437,6 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(NvU32 localMemReq) {
         timelineCtr++;
     }
 
-    //LIBRECUDA_ERR_PROPAGATE(signalWaitGpu(timelineSignal, timelineCtr));
-
     LIBRECUDA_SUCCEED();
 }
 
@@ -454,10 +452,17 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
                                bool async) {
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(numParams == function->param_info.size(), LIBRECUDA_ERROR_INVALID_VALUE);
-    if (!async) {
+
+    bool local_mem_changed;
+    {
+        auto pre_ctr = timelineCtr;
+        LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function->local_mem_req));
+        local_mem_changed = timelineCtr > pre_ctr;
+    }
+
+    if (!async || local_mem_changed) {
         LIBRECUDA_ERR_PROPAGATE(signalWaitGpu(timelineSignal, timelineCtr));
     }
-    LIBRECUDA_ERR_PROPAGATE(ensureEnoughLocalMem(function->local_mem_req));
 
     if (dmaCommandBuffer.empty()) {
         currentQueueType = COMPUTE;
