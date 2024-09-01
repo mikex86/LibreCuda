@@ -545,7 +545,21 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
                         kernargs_buf[j++] = param_value;
                         break;
                     }
-                    default: LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE)
+                    default: {
+                        if (param_size % sizeof(NvU32) != 0) {
+                            // cuda encodes everything with these 32-bit words. The fact that this would be allowed is highly
+                            // implausible given that even most c compilers pad struct lengths to multiples of 4 anyway,
+                            // so cuda doing it any different would be highly implausible
+                            LIBRECUDA_DEBUG("Encountered kernel with array parameter with size % 4 != 0! This should not be possible");
+                            LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
+                        }
+                        auto *param_ptr = reinterpret_cast<NvU32 *>(params[i]);
+                        size_t num_words = param_size / sizeof(NvU32);
+                        for (size_t k = 0; k < num_words; k++) {
+                            kernargs_buf[j++] = param_ptr[k];
+                        }
+                        break;
+                    }
                 }
             }
         }

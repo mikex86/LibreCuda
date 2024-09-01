@@ -8,4 +8,4 @@ target_link_libraries(
         driverapi
 )
 
-configure_file("${CMAKE_CURRENT_LIST_DIR}/write_float.cubin" ${CMAKE_BINARY_DIR}/tests/write_float COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/write_float.cubin" ${CMAKE_BINARY_DIR}/tests/dynamic_shared_mem COPYONLY)

@@ -1,6 +1,7 @@
 add_executable(
         test_async_kernels
         main.cpp
+        ../kernel_struct_param/main.cpp
 )
 target_link_libraries(
         test_async_kernels
@@ -8,4 +9,4 @@ target_link_libraries(
         driverapi
 )
 
-configure_file("${CMAKE_CURRENT_LIST_DIR}/write_float.cubin" ${CMAKE_BINARY_DIR}/tests/write_float COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/write_float.cubin" ${CMAKE_BINARY_DIR}/tests/test_async_kernels COPYONLY)
