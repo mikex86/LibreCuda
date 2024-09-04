@@ -37,9 +37,8 @@ libreCudaStatus_t memcpyD2D(void *dst, void *src, size_t size, LibreCUstream str
 
     bool use_high_bw = size > (1024 * 1024); // 1 MiB
 
-
     // technically the three kernels can run concurrently, so that's what we want to do.
-    // if the entire memcpyD2D command is logically !asymc, we only want to sync at the last kernel of the three
+    // if the entire memcpyD2D command is logically !async, we only want to sync at the last kernel of the three
     // that runs
     bool launch_kernel_1 = use_high_bw;
     bool launch_kernel_2 = !use_high_bw || size % MEMCPY_HIGHBW_BYTE_GRANULARITY != 0;
