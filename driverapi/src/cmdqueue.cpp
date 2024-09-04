@@ -568,7 +568,7 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
     // check launch dimensions
     NvU32 max_threads = ((65536 / roundUp(maxOf(1u, function->num_registers) * 32, 256u)) / 4) * 4 * 32;
 
-    uint32_t shmem_usage = function->shared_mem;
+    uint32_t shmem_usage = maxOf(function->shared_mem, sharedMemBytes);
 
     NvU32 blockProd = blockDimX * blockDimY * blockDimZ;
     if ((shmem_usage > sharedMemBytes) && (blockProd > 1024 || max_threads < blockProd)) {
