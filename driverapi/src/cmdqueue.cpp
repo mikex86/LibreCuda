@@ -295,8 +295,6 @@ libreCudaStatus_t NvCommandQueue::signalNotify(NvSignal *pSignal, NvU32 signalTa
             LIBRECUDA_ERR_PROPAGATE(enqueue(
                     makeNvMethod(4, NVC6B5_SET_SEMAPHORE_A, 3),
                     {
-                            // little endian inside NvU32s but big endian across NvU32s for some reason...
-                            // don't question nvidia's autism...
                             U64_HI_32_BITS(pSignal),
                             U64_LO_32_BITS(pSignal),
 
@@ -417,7 +415,6 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(LibreCUFunction function)
         LIBRECUDA_ERR_PROPAGATE(enqueue(
                 makeNvMethod(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_A, 2),
                 {
-                        // weird half big and little endian along int borders again...
                         U64_HI_32_BITS(function->shader_local_memory_va),
                         U64_LO_32_BITS(function->shader_local_memory_va)
                 },
@@ -426,7 +423,6 @@ libreCudaStatus_t NvCommandQueue::ensureEnoughLocalMem(LibreCUFunction function)
         LIBRECUDA_ERR_PROPAGATE(enqueue(
                 makeNvMethod(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A, 3),
 
-                // weird half big and little endian along int borders again...
                 {
                         U64_HI_32_BITS(bytes_per_tpc),
                         U64_LO_32_BITS(bytes_per_tpc),
