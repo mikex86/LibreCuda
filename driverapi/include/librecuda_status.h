@@ -6,12 +6,12 @@
 typedef int libreCudaStatus_t;
 
 #define LIBRECUDA_DEBUG(msg) std::cerr << "[LibreCuda Debug]: " << msg << std::endl
-#define STRINGIFY(x) #x
-#define TOSTRING(x) STRINGIFY(x)
+#define __LIBRECUDA_STRINGIFY(x) #x
+#define __LIBRECUDA_TOSTRING(x) __LIBRECUDA_STRINGIFY(x)
 
 #define LIBRECUDA_VALIDATE(condition, err) { \
     if (!(condition)) {                      \
-        LIBRECUDA_DEBUG(__FILE__ ":" TOSTRING(__LINE__) ": " #condition);         \
+        LIBRECUDA_DEBUG(__FILE__ ":" __LIBRECUDA_TOSTRING(__LINE__) ": " #condition);         \
         return err;                          \
     }                                        \
 }

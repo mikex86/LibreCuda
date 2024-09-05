@@ -821,6 +821,9 @@ struct RelocInfo {
 #define EIATTR_CUDA_API_VERSION 0x3704
 #define EIATTR_CUDA_API_VERSION_ATTR_WORD_LEN 2
 
+#define EIATTR_CRS_STACK_SIZE 0x1e04
+#define EIATTR_CRS_STACK_SIZE_ATTR_WORD_LEN 2
+
 #define EIATTR_PARAM_CBANK 0x0a04
 #define EIATTR_PARAM_CBANK_ATTR_WORD_LEN 3
 
@@ -1127,6 +1130,10 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                 switch (type) {
                     case EIATTR_CUDA_API_VERSION: {
                         off += (EIATTR_CUDA_API_VERSION_ATTR_WORD_LEN * sizeof(NvU32));
+                        break;
+                    }
+                    case EIATTR_CRS_STACK_SIZE: {
+                        off += (EIATTR_CRS_STACK_SIZE_ATTR_WORD_LEN * sizeof(NvU32));
                         break;
                     }
                     case EIATTR_PARAM_CBANK: {
