@@ -32,6 +32,23 @@ static inline NvU32 lo_32(NvU64 value) {
 #define U64_HI_32_BITS(value) hi_32(reinterpret_cast<NvU64>(value))
 #define U64_LO_32_BITS(value) lo_32(reinterpret_cast<NvU64>(value))
 
+struct LibreCUEvent_ {
+    LibreCUstream_ *stream;
+    NvSignal *computeSignal{};
+    NvSignal *dmaSignal{};
+};
+
+LibreCUEvent_ *NewEvent() {
+    return new LibreCUEvent_{};
+}
+
+LibreCUstream_ *EventGetStream(LibreCUEvent_ *pEvent) {
+    return pEvent->stream;
+}
+
+void DeleteEvent(LibreCUEvent_ *pEvent) {
+    delete pEvent;
+}
 
 static NvMethod makeNvMethod(int subcommand, int method, int size, int typ) {
     return (typ << 28) | (size << 16) | (subcommand << 13) | (method >> 2);
@@ -546,7 +563,8 @@ NvCommandQueue::launchFunction(LibreCUFunction function,
                             // cuda encodes everything with these 32-bit words. The fact that this would be allowed is highly
                             // implausible given that even most c compilers pad struct lengths to multiples of 4 anyway,
                             // so cuda doing it any different would be highly implausible
-                            LIBRECUDA_DEBUG("Encountered kernel with array parameter with size % 4 != 0! This should not be possible");
+                            LIBRECUDA_DEBUG(
+                                    "Encountered kernel with array parameter with size % 4 != 0! This should not be possible");
                             LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
                         }
                         auto *param_ptr = reinterpret_cast<NvU32 *>(params[i]);
@@ -872,5 +890,66 @@ libreCudaStatus_t NvCommandQueue::signalWaitGpu(NvSignal *pSignal, NvU32 signalT
             },
             COMPUTE
     ));
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::recordEvent(LibreCUEvent event, LibreCUstream_ *pStream) {
+    LIBRECUDA_VALIDATE(event != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+
+    event->stream = pStream;
+    switch (currentQueueType) {
+        case COMPUTE: {
+            if (event->computeSignal == nullptr) {
+                LIBRECUDA_ERR_PROPAGATE(obtainSignal(&event->computeSignal));
+            }
+            LIBRECUDA_ERR_PROPAGATE(signalNotify(event->computeSignal, 1, COMPUTE));
+            break;
+        }
+        case DMA: {
+            if (event->dmaSignal == nullptr) {
+                LIBRECUDA_ERR_PROPAGATE(obtainSignal(&event->dmaSignal));
+            }
+            LIBRECUDA_ERR_PROPAGATE(signalNotify(event->dmaSignal, 1, DMA));
+            break;
+        }
+        default: {
+            // if the queue type isn't determined yet, we just force compute mode.
+            if (event->computeSignal == nullptr) {
+                LIBRECUDA_ERR_PROPAGATE(obtainSignal(&event->computeSignal));
+            }
+            LIBRECUDA_ERR_PROPAGATE(signalNotify(event->computeSignal, 1, COMPUTE));
+            currentQueueType = COMPUTE;
+        }
+    }
+
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::waitForEvent(LibreCUEvent event) {
+    LIBRECUDA_VALIDATE(event != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(event->stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(event->computeSignal != nullptr || event->dmaSignal != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+
+    if (event->computeSignal != nullptr) {
+        signalWaitCpu(event->computeSignal, 1);
+    } else if (event->dmaSignal != nullptr) {
+        signalWaitCpu(event->dmaSignal, 1);
+    }
+
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t NvCommandQueue::getEventTimestamp(LibreCUEvent event, uint64_t *pTimestampOut) {
+    LIBRECUDA_VALIDATE(event != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(pTimestampOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(event->stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(event->computeSignal != nullptr || event->dmaSignal != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    if (currentQueueType == COMPUTE) {
+        LIBRECUDA_VALIDATE(event->computeSignal->value == 1, LIBRECUDA_ERROR_NOT_READY); // event was not hit yet
+        *pTimestampOut = event->computeSignal->time_stamp;
+    } else if (currentQueueType == DMA) {
+        LIBRECUDA_VALIDATE(event->dmaSignal->value == 1, LIBRECUDA_ERROR_NOT_READY); // event was not hit yet
+        *pTimestampOut = event->dmaSignal->time_stamp;
+    }
     LIBRECUDA_SUCCEED();
 }

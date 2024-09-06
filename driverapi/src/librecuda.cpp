@@ -1507,3 +1507,47 @@ libreCudaStatus_t libreCuFuncSetAttribute(LibreCUFunction function, LibreCuFunct
     }
     LIBRECUDA_SUCCEED();
 }
+
+LibreCUEvent_ *NewEvent();
+LibreCUstream_ *EventGetStream(LibreCUEvent pEvent);
+void DeleteEvent(LibreCUEvent_ *pEvent);
+
+libreCudaStatus_t libreCuEventCreate(LibreCUEvent *pEventOut, uint32_t flags) {
+    LIBRECUDA_VALIDATE(pEventOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    *pEventOut = NewEvent();
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuEventRecord(LibreCUEvent event, LibreCUstream stream) {
+    LIBRECUDA_VALIDATE(event != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->recordEvent(event, stream));
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuEventSynchronize(LibreCUEvent event) {
+    LIBRECUDA_VALIDATE(event != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LibreCUstream_ *stream = EventGetStream(event);
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->waitForEvent(event));
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuEventElapsedTime(float *pMillisecondsOut, LibreCUEvent start, LibreCUEvent end) {
+    LIBRECUDA_VALIDATE(start != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LibreCUstream_ *stream = EventGetStream(start);
+    LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(end != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    LIBRECUDA_VALIDATE(EventGetStream(end) == stream, LIBRECUDA_ERROR_INVALID_VALUE);
+    uint64_t startTimestamp{}, endTimestamp{};
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->getEventTimestamp(start, &startTimestamp));
+    LIBRECUDA_ERR_PROPAGATE(stream->command_queue->getEventTimestamp(end, &endTimestamp));
+    *pMillisecondsOut = static_cast<float>(static_cast<double>(endTimestamp - startTimestamp) / 1e6); // ns to ms
+    LIBRECUDA_SUCCEED();
+}
+
+libreCudaStatus_t libreCuEventDestroy(LibreCUEvent event) {
+    LIBRECUDA_VALIDATE(event != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
+    DeleteEvent(event);
+    LIBRECUDA_SUCCEED();
+}

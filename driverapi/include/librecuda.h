@@ -11,12 +11,14 @@ struct LibreCUcontext_;
 struct LibreCUmodule_;
 struct LibreCUFunction_;
 struct LibreCUstream_;
+struct LibreCUEvent_;
 
 typedef LibreCUdevice_ *LibreCUdevice;
 typedef LibreCUcontext_ *LibreCUcontext;
 typedef LibreCUmodule_ *LibreCUmodule;
 typedef LibreCUFunction_ *LibreCUFunction;
 typedef LibreCUstream_ *LibreCUstream;
+typedef LibreCUEvent_ *LibreCUEvent;
 
 #define CU_CTX_SCHED_SPIN 0x01
 #define CU_CTX_SCHED_YIELD 0x02
@@ -84,6 +86,12 @@ LIBRECUDA_EXPORT libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
                                                        void **kernelParams, size_t numParams,
                                                        void **extra,
                                                        bool async=false);
+
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuEventCreate(LibreCUEvent *pEventOut, uint32_t flags);
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuEventRecord(LibreCUEvent event, LibreCUstream stream);
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuEventSynchronize(LibreCUEvent event);
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuEventElapsedTime(float *pMillisecondsOut, LibreCUEvent start, LibreCUEvent end);
+LIBRECUDA_EXPORT libreCudaStatus_t libreCuEventDestroy(LibreCUEvent event);
 
 /**
  * Submits the built up command buffer to the gpu.

@@ -190,6 +190,12 @@ public:
 
     libreCudaStatus_t gpuMemcpy(void *dst, void *src, size_t numBytes, bool async);
 
+    libreCudaStatus_t recordEvent(LibreCUEvent event, LibreCUstream_ *pStream);
+
+    libreCudaStatus_t waitForEvent(LibreCUEvent event);
+
+    libreCudaStatus_t getEventTimestamp(LibreCUEvent event, uint64_t *pTimestampOut);
+
 private:
 
     libreCudaStatus_t enqueue(NvMethod method, std::initializer_list<NvU32> arguments, QueueType type);
