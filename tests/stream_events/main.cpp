@@ -74,12 +74,12 @@ int main() {
     LibreCUstream stream{};
     CUDA_CHECK(libreCuStreamCreate(&stream, 0));
 
-    void *float_dst_compute_va{};
-    void *float_dst_dma_va{};
-    CUDA_CHECK(libreCuMemAlloc(&float_dst_compute_va, sizeof(float), true));
-    CUDA_CHECK(libreCuMemAlloc(&float_dst_dma_va, sizeof(float), true));
-    *(float *) float_dst_compute_va = 0.0f;
-    *(float *) float_dst_dma_va = 0.0f;
+    void *float_dst_va{};
+    void *float_src_va{};
+    CUDA_CHECK(libreCuMemAlloc(&float_dst_va, sizeof(float), true));
+    CUDA_CHECK(libreCuMemAlloc(&float_src_va, sizeof(float), true));
+    *(float *) float_dst_va = 0.0f;
+    *(float *) float_src_va = 1.0f;
 
     LibreCUEvent start{}, end{};
     CUDA_CHECK(libreCuEventCreate(&start, 0));
@@ -88,7 +88,7 @@ int main() {
     CUDA_CHECK(libreCuEventRecord(start, stream));
     {
         void *params[] = {
-                &float_dst_compute_va, &float_dst_dma_va
+                &float_dst_va, &float_src_va
         };
         CUDA_CHECK(
                 libreCuLaunchKernel(func,
@@ -111,12 +111,11 @@ int main() {
 
     CUDA_CHECK(libreCuStreamAwait(stream));
 
-    std::cout << "Dst compute value (post exec): " << *(float *) (float_dst_compute_va) << std::endl;
-    std::cout << "Dst dma value (post exec): " << *(float *) (float_dst_dma_va) << std::endl;
+    std::cout << "Dst value (post exec): " << *(float *) (float_dst_va) << std::endl;
 
     // free memory
-    CUDA_CHECK(libreCuMemFree(float_dst_compute_va));
-    CUDA_CHECK(libreCuMemFree(float_dst_dma_va));
+    CUDA_CHECK(libreCuMemFree(float_dst_va));
+    CUDA_CHECK(libreCuMemFree(float_src_va));
 
     // destroy stream
     CUDA_CHECK(libreCuStreamDestroy(stream));
