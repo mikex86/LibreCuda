@@ -8,8 +8,12 @@ structure. LibreCUDA is capable of uploading CUDA ELF binaries onto the GPU and 
 ## Current features
 
 - Allocate and free gpu memory & map the memory to be accessible by the CPU
-- Capable of uploading CUDA ELF binaries to the GPU
-- Launches CUDA kernels via the command queue
+- Upload cuda kernels (CUDA ELF binaries)
+- Set dynamic shared memory for cuda functions
+- Launch CUDA kernels
+- Supports cheap async kernel launches on a single stream
+- host to device (DMA), device to device (Compute), device to host memcpy (DMA)
+- Supports cheap async memcpys on a single stream
 
 ## Example
 
