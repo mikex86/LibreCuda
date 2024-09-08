@@ -324,11 +324,10 @@ makeGpuFifo(LibreCUcontext ctx,
 }
 
 libreCudaStatus_t
-memMapToCpu(LibreCUcontext ctx, NvHandle memoryHandle, size_t size, NvU64 cpuVirtualAddress, NvU32 mapFlags,
+memMapToCpu(LibreCUcontext ctx, NvHandle memoryHandle, size_t size, NvU64 &targetVa, NvU32 mapFlags,
             bool isSystemAlloc) {
     LIBRECUDA_VALIDATE(ctx != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(memoryHandle != 0, LIBRECUDA_ERROR_INVALID_VALUE);
-    LIBRECUDA_VALIDATE(cpuVirtualAddress != 0, LIBRECUDA_ERROR_INVALID_VALUE);
 
     int device_fd;
     if (isSystemAlloc) {
@@ -356,14 +355,22 @@ memMapToCpu(LibreCUcontext ctx, NvHandle memoryHandle, size_t size, NvU64 cpuVir
             .fd=device_fd
     };
     NV_IOWR(fd_ctl, NV_ESC_RM_MAP_MEMORY, &parameters, sizeof(parameters));
+
+    void *map_result = mmap(
+            reinterpret_cast<void *>(targetVa), size,
+            PROT_READ | PROT_WRITE,
+            MAP_SHARED | (targetVa != 0 ? MAP_FIXED : 0),
+            device_fd, 0
+    );
+
     LIBRECUDA_VALIDATE(
-            mmap(reinterpret_cast<void *>(cpuVirtualAddress), size,
-                 PROT_READ | PROT_WRITE,
-                 MAP_SHARED | MAP_FIXED,
-                 device_fd, 0
-            ) != MAP_FAILED,
+            map_result != MAP_FAILED,
             LIBRECUDA_ERROR_UNKNOWN
     );
+    if (targetVa == 0) {
+        targetVa = reinterpret_cast<NvU64>(map_result);
+    }
+
     close(device_fd);
 
     LIBRECUDA_SUCCEED();
@@ -417,20 +424,19 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     RM_ALLOC(fd_ctl, TURING_USERMODE_A, root, sub_device_handle, 0, nullptr, 0, &user_mode_handle);
 
     // create gpu mmio region
-    NvU32 *gpu_mmio;
+    NvU64 gpu_mmio = 0;
     {
         size_t mmio_sz = 0x10000;
-        gpu_mmio = reinterpret_cast<NvU32 *>(bump_alloc_virtual_addr(ctx, mmio_sz));
         LIBRECUDA_ERR_PROPAGATE(
                 memMapToCpu(
                         ctx,
                         user_mode_handle, mmio_sz,
-                        reinterpret_cast<NvU64>(gpu_mmio), 2,
+                        gpu_mmio, 2,
                         false
                 )
         );
     }
-    device->gpu_mmio = gpu_mmio;
+    device->gpu_mmio = reinterpret_cast<NvU32 *>(gpu_mmio);
 
     // obtain device uuid
     {
@@ -1509,7 +1515,9 @@ libreCudaStatus_t libreCuFuncSetAttribute(LibreCUFunction function, LibreCuFunct
 }
 
 LibreCUEvent_ *NewEvent();
+
 LibreCUstream_ *EventGetStream(LibreCUEvent pEvent);
+
 void DeleteEvent(LibreCUEvent_ *pEvent);
 
 libreCudaStatus_t libreCuEventCreate(LibreCUEvent *pEventOut, uint32_t flags) {
