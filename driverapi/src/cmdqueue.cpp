@@ -944,10 +944,10 @@ libreCudaStatus_t NvCommandQueue::getEventTimestamp(LibreCUEvent event, uint64_t
     LIBRECUDA_VALIDATE(pTimestampOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(event->stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(event->computeSignal != nullptr || event->dmaSignal != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    if (currentQueueType == COMPUTE) {
+    if (event->computeSignal != nullptr) {
         LIBRECUDA_VALIDATE(event->computeSignal->value == 1, LIBRECUDA_ERROR_NOT_READY); // event was not hit yet
         *pTimestampOut = event->computeSignal->time_stamp;
-    } else if (currentQueueType == DMA) {
+    } else if (event->dmaSignal != nullptr) {
         LIBRECUDA_VALIDATE(event->dmaSignal->value == 1, LIBRECUDA_ERROR_NOT_READY); // event was not hit yet
         *pTimestampOut = event->dmaSignal->time_stamp;
     }

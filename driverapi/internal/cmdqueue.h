@@ -38,7 +38,7 @@ struct CommandQueuePage {
 
     /**
      * Pointer into commandQueuePage. Commands are mem-copied in appending fashion into the command queue page and
-     * commandWritePtr is used to keep track of the current offset from the base pointer.
+     * commandWritePtr is used to keep trackFlops of the current offset from the base pointer.
      */
     uint64_t commandWriteIdx = 0;
 
@@ -194,7 +194,7 @@ public:
 
     libreCudaStatus_t waitForEvent(LibreCUEvent event);
 
-    libreCudaStatus_t getEventTimestamp(LibreCUEvent event, uint64_t *pTimestampOut);
+    static libreCudaStatus_t getEventTimestamp(LibreCUEvent event, uint64_t *pTimestampOut);
 
 private:
 
