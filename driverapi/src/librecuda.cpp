@@ -41,6 +41,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <cassert>
 
 #define GPU_FIFO_AREA_SIZE 0x200000
 
@@ -241,7 +242,12 @@ static inline NvU64 maxOf(NvU64 a, NvU64 b) {
 }
 
 NvU64 bump_alloc_virtual_addr(LibreCUcontext ctx, size_t size, NvU32 alignment = 4 << 10) {
-    NvU64 va_address = ceilDiv(ctx->uvm_vaddr, alignment) * alignment;
+    NvU64 va_address = ctx->uvm_vaddr;
+    NvU64 slack = va_address % alignment;
+    if (slack != 0) {
+        va_address += (alignment - slack);
+    }
+    assert(va_address % alignment == 0);
     ctx->uvm_vaddr = va_address + size;
     return va_address;
 }
