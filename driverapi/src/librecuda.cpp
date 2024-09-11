@@ -241,6 +241,7 @@ static inline NvU64 maxOf(NvU64 a, NvU64 b) {
     return (a > b) ? a : b;
 }
 
+
 NvU64 bump_alloc_virtual_addr(LibreCUcontext ctx, size_t size, NvU32 alignment = 4 << 10) {
     NvU64 va_address = ctx->uvm_vaddr;
     NvU64 slack = va_address % alignment;
