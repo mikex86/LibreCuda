@@ -869,6 +869,9 @@ struct RelocInfo {
 #define EIATTR_S2RCTAID_INSTR_OFFSETS 0x1d04
 #define EIATTR_S2RCTAID_INSTR_OFFSETS_ATTR_BASE_WORD_LEN 1
 
+#define EIATTR_ANNOTATIONS 0x5504
+#define EIATTR_ANNOTATIONS_ATTR_BASE_WORD_LEN 1
+
 #define EIATTR_EXTERNS 0x0f04
 #define EIATTR_EXTERNS_ATTR_WORD_LEN 2
 
@@ -1038,7 +1041,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     }
 
                     relocs.push_back(RelocInfo{
-                            .apply_image_offset=target_image_off + offset,
+                            .apply_image_offset=static_cast<ELFIO::Elf64_Addr>(target_image_off + offset),
                             .rel_sym_offset=sym_section_offs + st_value,
                             .typ=type
                     });
@@ -1198,6 +1201,11 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         break;
                     }
                     case EIATTR_S2RCTAID_INSTR_OFFSETS: {
+                        off += EIATTR_S2RCTAID_INSTR_OFFSETS_ATTR_BASE_WORD_LEN * sizeof(NvU32);
+                        off += other;
+                        break;
+                    }
+                    case EIATTR_ANNOTATIONS: {
                         off += EIATTR_S2RCTAID_INSTR_OFFSETS_ATTR_BASE_WORD_LEN * sizeof(NvU32);
                         off += other;
                         break;
