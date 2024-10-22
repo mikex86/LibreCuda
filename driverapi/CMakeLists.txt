@@ -5,7 +5,7 @@ set(
         src/cmdqueue.cpp
         src/memcopy.cpp
         internal/memcopy.h
-        internal/memcopy_kernel.h
+        internal/memcopy_kernels.h
 )
 if (BUILD_LIBRECUDA_DRVIER_API_STATIC_LIB)
     add_library(driverapi STATIC ${DRIVERAPI_SOURCES})

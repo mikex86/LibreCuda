@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <nvidia/ctrl2080gr.h>
 
 #include "nvidia/nvtypes.h"
 #include "nvidia/nvCpuUuid.h"
@@ -13,6 +14,12 @@
 #include "nvidia/clc56f.h"
 
 struct NvCommandQueue;
+
+enum DriverType {
+    OPEN_KERNEL_MODULES, NVIDIA_PROPRIETARY
+};
+
+extern DriverType driver_type;
 
 struct GPFifo {
     NvU64 *ring;
@@ -28,6 +35,7 @@ struct LibreCUdevice_ {
     NvProcessorUuid uuid;
     NvU32 *gpu_mmio;
     NvU32 compute_class;
+    NV2080_CTRL_GR_INFO device_info[NV2080_CTRL_GR_INFO_INDEX_MAX + 1];
 };
 
 #define UVM_HEAP_START 0x1000000000
@@ -47,6 +55,7 @@ struct LibreCUcontext_ {
     NvHandle channel_group;
 };
 
+extern LibreCUcontext current_ctx;
 
 struct KernelConstantInfo {
     NvU32 const_nr;
@@ -73,6 +82,7 @@ struct LibreCUmodule_ {
     NvU64 module_va_addr{};
 };
 
+
 struct LibreCUFunction_ {
     std::string name;
     NvU64 func_va_addr;
@@ -87,12 +97,18 @@ struct LibreCUFunction_ {
      * Virtual address of shader local memory used for shaders/kernels.
      */
     NvU64 shader_local_memory_va{};
-
 };
 
 struct LibreCUstream_ {
     NvCommandQueue *command_queue;
 };
+
+struct LibreCuRoute {
+    NvBool valid;
+    NvU32 swizId;
+    NvU32 engineId;
+};
+
 
 #define LIBRECUDA_VALIDATE_UVM_IOCTL(ret, data_ptr) {                                    \
     int return_value = ret;                                                              \
@@ -131,12 +147,12 @@ static inline libreCudaStatus_t rm_alloc(int fd, NvV32 clss,
                                          NvHandle *pObjectNew) {
     LIBRECUDA_VALIDATE(fd > 0, LIBRECUDA_ERROR_INVALID_VALUE);
     NVOS21_PARAMETERS parameters{
-            .hRoot=client,
-            .hObjectParent=parent,
-            .hObjectNew=object,
-            .hClass=clss,
-            .pAllocParms=params,
-            .paramsSize=paramSize
+        .hRoot = client,
+        .hObjectParent = parent,
+        .hObjectNew = object,
+        .hClass = clss,
+        .pAllocParms = params,
+        .paramsSize = paramSize
     };
     NV_IOWR(fd, NV_ESC_RM_ALLOC, &parameters, sizeof(parameters));
     if (pObjectNew != nullptr) {
@@ -161,6 +177,7 @@ static inline libreCudaStatus_t rm_ctrl(int fd,
 
 #define RM_CTRL(fd, cmd, client, object, params, paramSize) LIBRECUDA_VALIDATE_RM_CTRL(rm_ctrl(fd, cmd, client, object, params, paramSize))
 
+#define LIBRECUDA_ENSURE_CTX_VALID() LIBRECUDA_VALIDATE(current_ctx != nullptr, LIBRECUDA_ERROR_INVALID_CONTEXT);
 
 libreCudaStatus_t
 gpuAlloc(LibreCUcontext ctx, size_t size, bool physicalContiguity, bool hugePages, bool mapToCpu, NvU32 mapFlags,
@@ -173,9 +190,16 @@ gpuSystemAlloc(LibreCUcontext ctx, size_t size, bool mapToCpu, NvU32 mapFlags,
 libreCudaStatus_t gpuFree(LibreCUcontext ctx, NvU64 virtualAddress);
 
 /**
- * Returns if the pointer is a device pointer.
+ * @param ptr the pointer to check for being a device pointer
+ * @return true if the pointer is a device pointer.
  * This does not mean the ptr is still allocated. It just means it is or was a device pointer.
  */
 bool isDevicePtr(void *ptr);
+
+/**
+ * @param ptr the pointer to check for being mapped to host.
+ * @return true if the pointer is a device pointer and mapped to host. will return false for host pointers.
+ */
+bool isHostMappedPtr(void *ptr);
 
 #endif //LIBRECUDA_LIBRECUDA_INTERNAL_H

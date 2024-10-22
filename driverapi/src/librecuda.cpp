@@ -56,18 +56,18 @@ static std::vector<NvU32> device_instances{};
 static std::vector<LibreCUdevice_> public_device_handles;
 
 static bool librecudaInitialized = false;
+DriverType driver_type;
 
 LibreCUcontext current_ctx = nullptr;
-#define LIBRECUDA_ENSURE_CTX_VALID() LIBRECUDA_VALIDATE(current_ctx != nullptr, LIBRECUDA_ERROR_INVALID_CONTEXT);
 
 libreCudaStatus_t rm_ctrl(int fd, NvV32 cmd, NvHandle client, NvHandle object, void *params, NvU32 paramSize) {
     LIBRECUDA_VALIDATE(params != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     NVOS54_PARAMETERS parameters{
-            .hClient=client,
-            .hObject=object,
-            .cmd=cmd,
-            .params=params,
-            .paramsSize=paramSize
+        .hClient = client,
+        .hObject = object,
+        .cmd = cmd,
+        .params = params,
+        .paramsSize = paramSize
     };
     NV_IOWR(fd, NV_ESC_RM_CONTROL, &parameters, sizeof(parameters));
     if (parameters.status != 0) {
@@ -94,7 +94,7 @@ libreCudaStatus_t libreCuInit(int flags) {
 
     // initialize nvidia_uvm
     {
-        UVM_INITIALIZE_PARAMS params{.flags=0};
+        UVM_INITIALIZE_PARAMS params{.flags = 0};
         UVM_IOCTL(fd_uvm, UVM_INITIALIZE, &params, sizeof(params));
     }
 
@@ -102,7 +102,7 @@ libreCudaStatus_t libreCuInit(int flags) {
     {
         int fd_uvm_2 = open("/dev/nvidia-uvm", O_RDWR | O_CLOEXEC);
         UVM_MM_INITIALIZE_PARAMS params{
-                .uvmFd=fd_uvm
+            .uvmFd = fd_uvm
         };
         // Not required by all platforms, status only ok when needed
         // On Linux, open-kernel-modules requires the fd, while the proprietary driver does not
@@ -110,18 +110,26 @@ libreCudaStatus_t libreCuInit(int flags) {
         NV_STATUS status = params.rmStatus;
         if (ret != 0 || status != 0) {
             if (status == NV_WARN_NOTHING_TO_DO) {
+                // we use this as an indicator that the proprietary driver is in use
+                driver_type = NVIDIA_PROPRIETARY;
+                LIBRECUDA_DEBUG("Proprietary driver detected. Consider using the open-kernel-modules driver.");
+                LIBRECUDA_DEBUG("The proprietary driver is not recommended and is inferior to the open-kernel-modules driver in terms of supported features.");
+                LIBRECUDA_DEBUG("Eg. DtoH memcpys cannot be performed via DMA, and a workaround is currently not implemented.");
                 close(fd_uvm_2);
             } else {
                 LIBRECUDA_DEBUG("UVM_MM_INITIALIZE failed with return code " + std::to_string(ret) + " and status " +
-                                std::to_string(status));
+                    std::to_string(status));
                 LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN);
             }
+        } else {
+            driver_type = OPEN_KERNEL_MODULES;
         }
     }
 
     // obtaining basic card info
     {
-        constexpr int n_infos = 128; // kernel respects this size; see open-gpu-kernel-modules/kernel-open/nvidia/nv.c:2451
+        constexpr int n_infos = 128;
+        // kernel respects this size; see open-gpu-kernel-modules/kernel-open/nvidia/nv.c:2451
         nv_ioctl_card_info_t card_infos[n_infos];
         NV_IOWR(fd_ctl, NV_ESC_CARD_INFO, card_infos, sizeof(card_infos));
 
@@ -134,8 +142,7 @@ libreCudaStatus_t libreCuInit(int flags) {
         }
 
         // respect CUDA_VISIBLE_DEVICES env variable
-        std::set<int> visible_ordinals{};
-        {
+        std::set<int> visible_ordinals{}; {
             const char *env_var_cstr = getenv("CUDA_VISIBLE_DEVICES");
             if (env_var_cstr != nullptr) {
                 std::string env_var = std::string(env_var_cstr);
@@ -176,7 +183,7 @@ libreCudaStatus_t libreCuInit(int flags) {
     {
         for (nv_ioctl_card_info_t card_info: devices) {
             NV0000_CTRL_GPU_GET_ID_INFO_V2_PARAMS params{
-                    .gpuId=card_info.gpu_id,
+                .gpuId = card_info.gpu_id,
             };
             RM_CTRL(fd_ctl, NV0000_CTRL_CMD_GPU_GET_ID_INFO_V2, root, root, &params, sizeof(params));
             device_instances.push_back(params.deviceInstance);
@@ -188,8 +195,8 @@ libreCudaStatus_t libreCuInit(int flags) {
         for (int ordinal = 0; ordinal < num_devices; ordinal++) {
             NvU32 device_instance = device_instances[ordinal];
             public_device_handles.push_back(LibreCUdevice_{
-                    .ordinal=ordinal,
-                    .instance=device_instance
+                .ordinal = ordinal,
+                .instance = device_instance
             });
         }
     }
@@ -265,32 +272,30 @@ makeGpuFifo(LibreCUcontext ctx,
     LIBRECUDA_VALIDATE(pGPFifoOut != nullptr, LIBRECUDA_ERROR_UNKNOWN);
 
     void *notifier_va{};
-    NvHandle notifier_memory_handle{};
-    {
+    NvHandle notifier_memory_handle{}; {
         LIBRECUDA_ERR_PROPAGATE(
-                gpuSystemAlloc(
-                        ctx,
-                        48 << 20, true, 0,
-                        reinterpret_cast<NvU64 *>(&notifier_va),
-                        &notifier_memory_handle
-                )
+            gpuSystemAlloc(
+                ctx,
+                48 << 20, true, 0,
+                reinterpret_cast<NvU64 *>(&notifier_va),
+                &notifier_memory_handle
+            )
         );
     }
 
-    NvHandle gpfifo{};
-    {
+    NvHandle gpfifo{}; {
         NV_CHANNELGPFIFO_ALLOCATION_PARAMETERS params{
-                .hObjectError=notifier_memory_handle,
-                .hObjectBuffer=gpfifoAreaHandle,
-                .gpFifoOffset=gpfifoAreaVa + offset,
-                .gpFifoEntries=entries,
-                .hContextShare=ctxShare,
-                .hUserdMemory={
-                        gpfifoAreaHandle
-                },
-                .userdOffset={
-                        entries * 8 + offset
-                }
+            .hObjectError = notifier_memory_handle,
+            .hObjectBuffer = gpfifoAreaHandle,
+            .gpFifoOffset = gpfifoAreaVa + offset,
+            .gpFifoEntries = entries,
+            .hContextShare = ctxShare,
+            .hUserdMemory = {
+                gpfifoAreaHandle
+            },
+            .userdOffset = {
+                entries * 8 + offset
+            }
         };
         RM_ALLOC(fd_ctl, AMPERE_CHANNEL_GPFIFO_A, root, channelGroup, 0, &params, sizeof(params), &gpfifo);
     }
@@ -299,32 +304,30 @@ makeGpuFifo(LibreCUcontext ctx,
     RM_ALLOC(fd_ctl, AMPERE_DMA_COPY_B, root, gpfifo, 0, nullptr, 0, nullptr);
 
     // get work submit token
-    NvU32 work_submit_token;
-    {
-        NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN_PARAMS params{.workSubmitToken=0xFFFFFFFF};
+    NvU32 work_submit_token; {
+        NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN_PARAMS params{.workSubmitToken = 0xFFFFFFFF};
         RM_CTRL(fd_ctl, NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN, root, gpfifo, &params, sizeof(params));
         LIBRECUDA_VALIDATE(params.workSubmitToken != 0xFFFFFFFF, LIBRECUDA_ERROR_UNKNOWN);
         work_submit_token = params.workSubmitToken;
     }
 
-    NvU64 channel_base_va = bump_alloc_virtual_addr(ctx, 0x4000000);
-    {
+    NvU64 channel_base_va = bump_alloc_virtual_addr(ctx, 0x4000000); {
         UVM_REGISTER_CHANNEL_PARAMS params{
-                .gpuUuid = ctx->device->uuid,
-                .rmCtrlFd=fd_ctl,
-                .hClient=root,
-                .hChannel=gpfifo,
-                .base=channel_base_va,
-                .length=0x4000000
+            .gpuUuid = ctx->device->uuid,
+            .rmCtrlFd = fd_ctl,
+            .hClient = root,
+            .hChannel = gpfifo,
+            .base = channel_base_va,
+            .length = 0x4000000
         };
         UVM_IOCTL(fd_uvm, UVM_REGISTER_CHANNEL, &params, sizeof(UVM_REGISTER_CHANNEL_PARAMS));
     }
 
     GPFifo fifo{
-            .ring=reinterpret_cast<NvU64 *>(gpfifoAreaVa + offset),
-            .entries_count=entries,
-            .token=work_submit_token,
-            .controls = reinterpret_cast<AmpereAControlGPFifo *>(gpfifoAreaVa + offset + entries * 8)
+        .ring = reinterpret_cast<NvU64 *>(gpfifoAreaVa + offset),
+        .entries_count = entries,
+        .token = work_submit_token,
+        .controls = reinterpret_cast<AmpereAControlGPFifo *>(gpfifoAreaVa + offset + entries * 8)
     };
     *pGPFifoOut = fifo;
     LIBRECUDA_SUCCEED();
@@ -346,33 +349,33 @@ memMapToCpu(LibreCUcontext ctx, NvHandle memoryHandle, size_t size, NvU64 &targe
         device_fd = open(device_file.c_str(), O_RDWR | O_CLOEXEC);
         LIBRECUDA_VALIDATE(device_fd != -1, LIBRECUDA_ERROR_INVALID_DEVICE);
         nv_ioctl_register_fd_t params{
-                .ctl_fd=fd_ctl
+            .ctl_fd = fd_ctl
         };
         NV_IOWR(device_fd, NV_ESC_REGISTER_FD, &params, sizeof(params));
     }
 
     nv_ioctl_nvos33_parameters_with_fd parameters{
-            .params={
-                    .hClient=root,
-                    .hDevice=ctx->device_handle,
-                    .hMemory=memoryHandle,
-                    .length=size,
-                    .flags=mapFlags
-            },
-            .fd=device_fd
+        .params = {
+            .hClient = root,
+            .hDevice = ctx->device_handle,
+            .hMemory = memoryHandle,
+            .length = size,
+            .flags = mapFlags
+        },
+        .fd = device_fd
     };
     NV_IOWR(fd_ctl, NV_ESC_RM_MAP_MEMORY, &parameters, sizeof(parameters));
 
     void *map_result = mmap(
-            reinterpret_cast<void *>(targetVa), size,
-            PROT_READ | PROT_WRITE,
-            MAP_SHARED | (targetVa != 0 ? MAP_FIXED : 0),
-            device_fd, 0
+        reinterpret_cast<void *>(targetVa), size,
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED | (targetVa != 0 ? MAP_FIXED : 0),
+        device_fd, 0
     );
 
     LIBRECUDA_VALIDATE(
-            map_result != MAP_FAILED,
-            LIBRECUDA_ERROR_UNKNOWN
+        map_result != MAP_FAILED,
+        LIBRECUDA_ERROR_UNKNOWN
     );
     if (targetVa == 0) {
         targetVa = reinterpret_cast<NvU64>(map_result);
@@ -389,34 +392,33 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     LIBRECUDA_VALIDATE(device != nullptr, LIBRECUDA_ERROR_INVALID_DEVICE);
     LIBRECUDA_VALIDATE(device->ordinal >= 0 && device->ordinal < num_devices, LIBRECUDA_ERROR_INVALID_DEVICE);
     LIBRECUDA_VALIDATE(
-            std::find(device_instances.begin(), device_instances.end(), device->instance) != device_instances.end(),
-            LIBRECUDA_ERROR_INVALID_DEVICE
+        std::find(device_instances.begin(), device_instances.end(), device->instance) != device_instances.end(),
+        LIBRECUDA_ERROR_INVALID_DEVICE
     );
 
     std::string device_file = getDeviceFile(device);
 
     auto *ctx = new LibreCUcontext_{
-            .flags=flags,
-            .device = &public_device_handles[device->ordinal]
+        .flags = flags,
+        .device = &public_device_handles[device->ordinal]
     };
 
     // create & register device device fd
     {
         int device_fd = open(device_file.c_str(), O_RDWR | O_CLOEXEC);
         nv_ioctl_register_fd_t params{
-                .ctl_fd=fd_ctl
+            .ctl_fd = fd_ctl
         };
         NV_IOWR(device_fd, NV_ESC_REGISTER_FD, &params, sizeof(params));
         ctx->device_fd = device_fd;
     }
 
     // create device rm handle
-    NvHandle device_handle{};
-    {
+    NvHandle device_handle{}; {
         NV0080_ALLOC_PARAMETERS params{
-                .deviceId=device->instance,
-                .hClientShare=root,
-                .vaMode=NV_DEVICE_ALLOCATION_VAMODE_MULTIPLE_VASPACES
+            .deviceId = device->instance,
+            .hClientShare = root,
+            .vaMode = NV_DEVICE_ALLOCATION_VAMODE_MULTIPLE_VASPACES
         };
         RM_ALLOC(fd_ctl, NV01_DEVICE_0, root, root, 0, &params, sizeof(params), &device_handle);
         ctx->device_handle = device_handle;
@@ -431,16 +433,15 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     RM_ALLOC(fd_ctl, TURING_USERMODE_A, root, sub_device_handle, 0, nullptr, 0, &user_mode_handle);
 
     // create gpu mmio region
-    NvU64 gpu_mmio = 0;
-    {
+    NvU64 gpu_mmio = 0; {
         size_t mmio_sz = 0x10000;
         LIBRECUDA_ERR_PROPAGATE(
-                memMapToCpu(
-                        ctx,
-                        user_mode_handle, mmio_sz,
-                        gpu_mmio, 2,
-                        false
-                )
+            memMapToCpu(
+                ctx,
+                user_mode_handle, mmio_sz,
+                gpu_mmio, 2,
+                false
+            )
         );
     }
     device->gpu_mmio = reinterpret_cast<NvU32 *>(gpu_mmio);
@@ -448,23 +449,22 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     // obtain device uuid
     {
         NV2080_CTRL_GPU_GET_GID_INFO_PARAMS params{
-                .flags=NV2080_GPU_CMD_GPU_GET_GID_FLAGS_FORMAT_BINARY,
-                .length=16
+            .flags = NV2080_GPU_CMD_GPU_GET_GID_FLAGS_FORMAT_BINARY,
+            .length = 16
         };
         RM_CTRL(fd_ctl, NV2080_CTRL_CMD_GPU_GET_GID_INFO, root, sub_device_handle, &params, sizeof(params));
         memcpy(device->uuid.uuid, params.data, 16);
     }
 
     // create virtual address space
-    NvHandle va_space{};
-    {
+    NvHandle va_space{}; {
         NV_VASPACE_ALLOCATION_PARAMETERS params{
-                .index=NV_VASPACE_ALLOCATION_INDEX_GPU_NEW,
-                .flags = NV_VASPACE_ALLOCATION_FLAGS_ENABLE_PAGE_FAULTING |
-                         NV_VASPACE_ALLOCATION_FLAGS_IS_EXTERNALLY_OWNED,
-                .vaSize = 0x1fffffb000000,
-                .bigPageSize = 0, // use system default
-                .vaBase = 0x1000,
+            .index = NV_VASPACE_ALLOCATION_INDEX_GPU_NEW,
+            .flags = NV_VASPACE_ALLOCATION_FLAGS_ENABLE_PAGE_FAULTING |
+                     NV_VASPACE_ALLOCATION_FLAGS_IS_EXTERNALLY_OWNED,
+            .vaSize = 0x1fffffb000000,
+            .bigPageSize = 0, // use system default
+            .vaBase = 0x1000,
         };
         RM_ALLOC(fd_ctl, FERMI_VASPACE_A, root, device_handle, 0, &params, sizeof(params), &va_space);
     }
@@ -472,8 +472,8 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     // register gpu
     {
         UVM_REGISTER_GPU_PARAMS params{
-                .gpu_uuid=device->uuid,
-                .rmCtrlFd = -1,
+            .gpu_uuid = device->uuid,
+            .rmCtrlFd = -1,
         };
         UVM_IOCTL(fd_uvm, UVM_REGISTER_GPU, &params, sizeof(params));
     }
@@ -481,20 +481,19 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     // register gpu virtual address space
     {
         UVM_REGISTER_GPU_VASPACE_PARAMS params{
-                .gpuUuid=device->uuid,
-                .rmCtrlFd=fd_ctl,
-                .hClient=root,
-                .hVaSpace=va_space
+            .gpuUuid = device->uuid,
+            .rmCtrlFd = fd_ctl,
+            .hClient = root,
+            .hVaSpace = va_space
         };
         UVM_IOCTL(fd_uvm, UVM_REGISTER_GPU_VASPACE, &params, sizeof(params));
     }
     ctx->va_space_handle = va_space;
 
     // create channel group
-    NvHandle channel_group{};
-    {
+    NvHandle channel_group{}; {
         NV_CHANNEL_GROUP_ALLOCATION_PARAMETERS params{
-                .engineType=NV2080_ENGINE_TYPE_GRAPHICS
+            .engineType = NV2080_ENGINE_TYPE_GRAPHICS
         };
         RM_ALLOC(fd_ctl, KEPLER_CHANNEL_GROUP_A, root, device_handle, 0, &params, sizeof(params),
                  &channel_group);
@@ -502,11 +501,10 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     ctx->channel_group = channel_group;
 
     // create ctx share
-    NvHandle ctx_share{};
-    {
+    NvHandle ctx_share{}; {
         NV_CTXSHARE_ALLOCATION_PARAMETERS params{
-                .hVASpace = ctx->va_space_handle,
-                .flags = NV_CTXSHARE_ALLOCATION_FLAGS_SUBCONTEXT_ASYNC
+            .hVASpace = ctx->va_space_handle,
+            .flags = NV_CTXSHARE_ALLOCATION_FLAGS_SUBCONTEXT_ASYNC
         };
         RM_ALLOC(fd_ctl, FERMI_CONTEXT_SHARE_A, root, channel_group, 0, &params, sizeof(params), &ctx_share);
     }
@@ -516,8 +514,8 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     {
         NvU32 class_list[NV0080_CTRL_GPU_CLASSLIST_MAX_SIZE];
         NV0080_CTRL_GPU_GET_CLASSLIST_PARAMS params{
-                .numClasses=NV0080_CTRL_GPU_CLASSLIST_MAX_SIZE,
-                .classList=class_list
+            .numClasses = NV0080_CTRL_GPU_CLASSLIST_MAX_SIZE,
+            .classList = class_list
         };
         RM_CTRL(fd_ctl, NV0080_CTRL_CMD_GPU_GET_CLASSLIST, root, device_handle, &params, sizeof(params));
 
@@ -532,14 +530,34 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
                     break;
             }
         }
-        loop_end:
+    loop_end:
         ctx->device->compute_class = compute_class;
     }
 
+    // get device info
+    {
+        NV2080_CTRL_GR_GET_INFO_PARAMS params{};
+        NV2080_CTRL_GR_INFO grInfoList[NV2080_CTRL_GR_INFO_INDEX_MAX + 1];
+        for (int i = 0; i <= NV2080_CTRL_GR_INFO_INDEX_MAX; i++) {
+            grInfoList[i].index = i;
+        }
+        params.grInfoList = grInfoList;
+        params.grInfoListSize = NV2080_CTRL_GR_INFO_INDEX_MAX + 1;
+        params.grRouteInfo = NV2080_CTRL_GR_ROUTE_INFO{
+            .flags = NV2080_CTRL_GR_ROUTE_INFO_FLAGS_TYPE_NONE,
+            .route = 0
+        };
+        RM_CTRL(fd_ctl, NV2080_CTRL_CMD_GR_GET_INFO, root, sub_device_handle, &params,
+                sizeof(params));
+
+        int i = 0;
+        for (auto &grInfo: device->device_info) {
+            grInfo = grInfoList[i++];
+        }
+    }
     // create compute & dma gpfifo
     GPFifo compute_gpfifo{};
-    GPFifo dma_gpfifo{};
-    {
+    GPFifo dma_gpfifo{}; {
         NvU64 gpfifo_area_va{};
         NvHandle gpfifo_area_handle{};
 
@@ -549,39 +567,39 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
             // but NVOS33_FLAGS_CACHING_TYPE_UNCACHED is ignored in kernel when calling from userspace?
             // also NVOS33_FLAGS_RESERVE_ON_UNMAP_ENABLE allows dangling pointer to remain valid but not mapped to GPU? why?
             LIBRECUDA_ERR_PROPAGATE(
-                    gpuAlloc(ctx, GPU_FIFO_AREA_SIZE, true, true, true,
-                             (NVOS33_FLAGS_MAPPING_DIRECT << 16) | (NVOS33_FLAGS_MAP_FIXED_ENABLE << 18) |
-                             (NVOS33_FLAGS_RESERVE_ON_UNMAP_ENABLE << 19) |
-                             (NVOS33_FLAGS_CACHING_TYPE_WRITECOMBINED << 23),
-                             &gpfifo_area_va,
-                             &gpfifo_area_handle
-                    )
+                gpuAlloc(ctx, GPU_FIFO_AREA_SIZE, true, true, true,
+                    (NVOS33_FLAGS_MAPPING_DIRECT << 16) | (NVOS33_FLAGS_MAP_FIXED_ENABLE << 18) |
+                    (NVOS33_FLAGS_RESERVE_ON_UNMAP_ENABLE << 19) |
+                    (NVOS33_FLAGS_CACHING_TYPE_WRITECOMBINED << 23),
+                    &gpfifo_area_va,
+                    &gpfifo_area_handle
+                )
             );
         }
 
         // create compute gpfifo
         {
             LIBRECUDA_ERR_PROPAGATE(
-                    makeGpuFifo(
-                            ctx,
-                            gpfifo_area_va, gpfifo_area_handle,
-                            ctx_share, channel_group,
-                            0, 0x10000,
-                            &compute_gpfifo
-                    )
+                makeGpuFifo(
+                    ctx,
+                    gpfifo_area_va, gpfifo_area_handle,
+                    ctx_share, channel_group,
+                    0, 0x10000,
+                    &compute_gpfifo
+                )
             );
         }
 
         // create dma gpfifo
         {
             LIBRECUDA_ERR_PROPAGATE(
-                    makeGpuFifo(
-                            ctx,
-                            gpfifo_area_va, gpfifo_area_handle,
-                            ctx_share, channel_group,
-                            0x100000, 0x10000,
-                            &dma_gpfifo
-                    )
+                makeGpuFifo(
+                    ctx,
+                    gpfifo_area_va, gpfifo_area_handle,
+                    ctx_share, channel_group,
+                    0x100000, 0x10000,
+                    &dma_gpfifo
+                )
             );
         }
     }
@@ -597,7 +615,7 @@ libreCudaStatus_t libreCuCtxCreate_v2(LibreCUcontext *pCtx, int flags, LibreCUde
     current_ctx = ctx;
 
     // load kernels
-    LIBRECUDA_ERR_PROPAGATE(loadMemcpyKernelsIfNeeded());
+    LIBRECUDA_ERR_PROPAGATE(loadMemcpyKernelsIfNeeded(device));
 
     LIBRECUDA_SUCCEED();
 }
@@ -624,6 +642,7 @@ libreCudaStatus_t libreCuCtxSetCurrent(LibreCUcontext ctx) {
     LIBRECUDA_SUCCEED();
 }
 
+static std::vector<std::pair<NvU64, NvU64> > hostMappedPtrs{};
 static std::unordered_map<NvU64, NvHandle> va_to_mem_handle{};
 
 
@@ -635,8 +654,8 @@ libreCudaStatus_t memUVMMap(LibreCUcontext ctx, NvHandle memoryHandle, NvU64 vir
     // create external range
     {
         UVM_CREATE_EXTERNAL_RANGE_PARAMS params{
-                .base=virtualAddress,
-                .length=size
+            .base = virtualAddress,
+            .length = size
         };
         UVM_IOCTL(fd_uvm, UVM_CREATE_EXTERNAL_RANGE, &params, sizeof(params));
     }
@@ -644,18 +663,18 @@ libreCudaStatus_t memUVMMap(LibreCUcontext ctx, NvHandle memoryHandle, NvU64 vir
     // map obtained memory handle to the target virtual address
     {
         UVM_MAP_EXTERNAL_ALLOCATION_PARAMS params{
-                .base=virtualAddress,
-                .length=size,
-                .perGpuAttributes={
-                        {
-                                .gpuUuid=ctx->device->uuid,
-                                .gpuMappingType=UvmGpuMappingTypeReadWriteAtomic
-                        }
-                },
-                .gpuAttributesCount=1,
-                .rmCtrlFd=fd_ctl,
-                .hClient=root,
-                .hMemory=memoryHandle
+            .base = virtualAddress,
+            .length = size,
+            .perGpuAttributes = {
+                {
+                    .gpuUuid = ctx->device->uuid,
+                    .gpuMappingType = UvmGpuMappingTypeReadWriteAtomic
+                }
+            },
+            .gpuAttributesCount = 1,
+            .rmCtrlFd = fd_ctl,
+            .hClient = root,
+            .hMemory = memoryHandle
         };
         UVM_IOCTL(fd_uvm, UVM_MAP_EXTERNAL_ALLOCATION, &params, sizeof(params));
     }
@@ -672,21 +691,21 @@ gpuAlloc(LibreCUcontext ctx, size_t size, bool physicalContiguity, bool hugePage
     size = ceilDiv(size, alignment) * alignment; // round up to next multiple of alignment
 
     // perform allocation
-    NvHandle memory_handle{};
-    {
+    NvHandle memory_handle{}; {
         NV_MEMORY_ALLOCATION_PARAMS params{
-                .owner=root,
-                .attr=static_cast<NvU32>((hugePages ? (NVOS32_ATTR_PAGE_SIZE_HUGE << 23) : 0) |
-                                         ((physicalContiguity ? NVOS32_ATTR_PHYSICALITY_CONTIGUOUS
-                                                              : NVOS32_ATTR_PHYSICALITY_ALLOW_NONCONTIGUOUS) << 27)),
-                .attr2 = static_cast<NvU32>(((NVOS32_ATTR2_ZBC_PREFER_NO_ZBC << 0) |
-                                             (NVOS32_ATTR2_GPU_CACHEABLE_YES << 2) |
-                                             (hugePages ? (NVOS32_ATTR2_PAGE_SIZE_HUGE_2MB << 20) : 0))),
-                .format=NV_MMU_PTE_KIND_GENERIC_MEMORY,
-                .size=size,
-                .alignment=alignment,
-                .offset=0,
-                .limit=size - 1
+            .owner = root,
+            .attr = static_cast<NvU32>((hugePages ? (NVOS32_ATTR_PAGE_SIZE_HUGE << 23) : 0) |
+                                       ((physicalContiguity
+                                             ? NVOS32_ATTR_PHYSICALITY_CONTIGUOUS
+                                             : NVOS32_ATTR_PHYSICALITY_ALLOW_NONCONTIGUOUS) << 27)),
+            .attr2 = static_cast<NvU32>(((NVOS32_ATTR2_ZBC_PREFER_NO_ZBC << 0) |
+                                         (NVOS32_ATTR2_GPU_CACHEABLE_YES << 2) |
+                                         (hugePages ? (NVOS32_ATTR2_PAGE_SIZE_HUGE_2MB << 20) : 0))),
+            .format = NV_MMU_PTE_KIND_GENERIC_MEMORY,
+            .size = size,
+            .alignment = alignment,
+            .offset = 0,
+            .limit = size - 1
         };
         RM_ALLOC(fd_ctl, NV1_MEMORY_USER, root, ctx->device_handle, 0, &params, sizeof(params), &memory_handle);
     }
@@ -699,6 +718,7 @@ gpuAlloc(LibreCUcontext ctx, size_t size, bool physicalContiguity, bool hugePage
 
     // map to cpu if requested
     if (mapToCpu) {
+        hostMappedPtrs.push_back({va_address, va_address + size});
         LIBRECUDA_ERR_PROPAGATE(memMapToCpu(ctx, memory_handle, size, va_address, mapFlags, false));
     }
 
@@ -715,8 +735,7 @@ libreCudaStatus_t libreCuMemAlloc(void **pDevicePointer, size_t bytesize, bool m
     LIBRECUDA_VALIDATE(pDevicePointer != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(bytesize > 0, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ENSURE_CTX_VALID();
-    NvU64 va_address{};
-    {
+    NvU64 va_address{}; {
         bool hugePages = bytesize > (16 << 20);
         gpuAlloc(current_ctx, bytesize, false, hugePages, mapToCpu, 0, &va_address);
     }
@@ -725,18 +744,28 @@ libreCudaStatus_t libreCuMemAlloc(void **pDevicePointer, size_t bytesize, bool m
 }
 
 libreCudaStatus_t gpuFree(LibreCUcontext ctx, NvU64 virtualAddress) {
-    auto it = va_to_mem_handle.find(virtualAddress);
-    if (it == va_to_mem_handle.end()) {
-        LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
+    NvHandle mem_handle; {
+        auto it = va_to_mem_handle.find(virtualAddress);
+        if (it == va_to_mem_handle.end()) {
+            LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
+        }
+        mem_handle = it->second;
     }
-    NvHandle mem_handle = it->second;
     NVOS00_PARAMETERS params{
-            .hRoot = root,
-            .hObjectParent = ctx->device_handle,
-            .hObjectOld = mem_handle
+        .hRoot = root,
+        .hObjectParent = ctx->device_handle,
+        .hObjectOld = mem_handle
     };
     NV_IOWR(fd_ctl, NV_ESC_RM_FREE, &params, sizeof(params));
-
+    va_to_mem_handle.erase(virtualAddress);
+    // iterate in reverse order to exploit the fact that we use a bump allocator
+    // and the insertion position is indicative of the address magnitude
+    for (auto it = hostMappedPtrs.end(); it >= hostMappedPtrs.begin(); --it) {
+        if (virtualAddress < it->second && virtualAddress >= it->first) {
+            hostMappedPtrs.erase(it);
+            break;
+        }
+    }
     LIBRECUDA_SUCCEED();
 }
 
@@ -746,20 +775,19 @@ gpuSystemAlloc(LibreCUcontext ctx, size_t size, bool mapToCpu, NvU32 mapFlags, N
     LIBRECUDA_VALIDATE(pVaOut != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(ctx != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
 
-    NvHandle memory_handle{};
-    {
+    NvHandle memory_handle{}; {
         NV_MEMORY_ALLOCATION_PARAMS params{
-                .owner=root,
-                .type=NVOS32_TYPE_NOTIFIER,
-                .flags=(NVOS32_ALLOC_FLAGS_IGNORE_BANK_PLACEMENT | NVOS32_ALLOC_FLAGS_MEMORY_HANDLE_PROVIDED |
-                        NVOS32_ALLOC_FLAGS_MAP_NOT_REQUIRED),
-                .attr=(NVOS32_ATTR_PHYSICALITY_ALLOW_NONCONTIGUOUS << 27) | (NVOS32_ATTR_LOCATION_PCI << 25),
-                .attr2=(NVOS32_ATTR2_ZBC_PREFER_NO_ZBC << 0) | (NVOS32_ATTR2_GPU_CACHEABLE_NO << 2),
-                .format=6,
-                .size=size,
-                .alignment=(4 << 10),
-                .offset=0,
-                .limit=size - 1
+            .owner = root,
+            .type = NVOS32_TYPE_NOTIFIER,
+            .flags = (NVOS32_ALLOC_FLAGS_IGNORE_BANK_PLACEMENT | NVOS32_ALLOC_FLAGS_MEMORY_HANDLE_PROVIDED |
+                      NVOS32_ALLOC_FLAGS_MAP_NOT_REQUIRED),
+            .attr = (NVOS32_ATTR_PHYSICALITY_ALLOW_NONCONTIGUOUS << 27) | (NVOS32_ATTR_LOCATION_PCI << 25),
+            .attr2 = (NVOS32_ATTR2_ZBC_PREFER_NO_ZBC << 0) | (NVOS32_ATTR2_GPU_CACHEABLE_NO << 2),
+            .format = 6,
+            .size = size,
+            .alignment = (4 << 10),
+            .offset = 0,
+            .limit = size - 1
         };
         RM_ALLOC(fd_ctl, NV1_MEMORY_SYSTEM, root, ctx->device_handle, 0, &params, sizeof(params), &memory_handle);
     }
@@ -787,13 +815,43 @@ gpuSystemAlloc(LibreCUcontext ctx, size_t size, bool mapToCpu, NvU32 mapFlags, N
 bool isDevicePtr(void *ptr) {
     LIBRECUDA_ENSURE_CTX_VALID();
 
-    auto va = reinterpret_cast<NvU64>(ptr);
+    const auto va = reinterpret_cast<NvU64>(ptr);
+
+    // we exploit the fact that we use a bump allocator that is never popped from to
+    // derive new addresses. If it's below the current uvm_addr where the
+    // next alloc would go, it's a valid device address.
     if (va < UVM_HEAP_START) {
         return false;
     }
     if (va < current_ctx->uvm_vaddr) {
         return true;
     }
+    return false;
+}
+
+bool isHostMappedPtr(void *ptr) {
+    LIBRECUDA_ENSURE_CTX_VALID();
+
+    // only makes sense for device pointers
+    if (!isDevicePtr(ptr)) {
+        return false;
+    }
+
+    const auto va = reinterpret_cast<NvU64>(ptr);
+
+    // iterate in reverse order to exploit the fact that we use a bump allocator
+    // and the insertion position is indicative of the address magnitude
+    for (auto it = hostMappedPtrs.end(); it >= hostMappedPtrs.begin(); --it) {
+        if (va < it->second && va >= it->first) {
+            return true;
+        }
+        // if we reach addresses smaller than the target va, we can rule out we will find
+        // an entry that contains the address
+        if (it->first < va) {
+            return false;
+        }
+    }
+
     return false;
 }
 
@@ -870,9 +928,6 @@ struct RelocInfo {
 #define EIATTR_S2RCTAID_INSTR_OFFSETS 0x1d04
 #define EIATTR_S2RCTAID_INSTR_OFFSETS_ATTR_BASE_WORD_LEN 1
 
-#define EIATTR_ANNOTATIONS 0x5504
-#define EIATTR_ANNOTATIONS_ATTR_BASE_WORD_LEN 1
-
 #define EIATTR_EXTERNS 0x0f04
 #define EIATTR_EXTERNS_ATTR_WORD_LEN 2
 
@@ -886,8 +941,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     LIBRECUDA_ENSURE_CTX_VALID();
 
     // parse image as elf binary
-    ELFIO::elfio elf_reader{};
-    {
+    ELFIO::elfio elf_reader{}; {
         const auto *data = reinterpret_cast<const char *>(image);
         std::string s(reinterpret_cast<const char *>(data), imageSize);
         std::istringstream istream(s);
@@ -896,8 +950,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
 
     // rebuild image with sections aligned to 128
     uint8_t *rebuilt_image;
-    size_t rebuilt_image_size;
-    {
+    size_t rebuilt_image_size; {
         NvU32 force_section_align = 128;
 
         std::vector<uint8_t> image_data{};
@@ -951,25 +1004,30 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     // Ensure at least 4KB of space after the program to mitigate prefetch memory faults.
     size_t allocated_size = ceilDiv(rebuilt_image_size, 0x1000) * 0x1000 + 0x1000;
     LIBRECUDA_ERR_PROPAGATE(
-            gpuAlloc(current_ctx, allocated_size, false, false, true, 0, &module_gpu_va)
+        gpuAlloc(current_ctx, allocated_size, false, false, true, 0, &module_gpu_va)
     );
 
     std::unordered_set<std::string> function_names{}; // list of all function names
-    std::unordered_map<std::string, NvU32> function_shared_mem{}; // maps function names to their shared memory requirements
-    std::unordered_map<std::string, NvU64> function_addrs{}; // maps function names to their addresses in the uploaded memory
-    std::unordered_map<std::string, NvU32> function_regs{}; // maps function names to their register requirements (n registers)
-    std::unordered_map<std::string, NvU32> function_local_mem_reqs{}; // maps function names to their local mem requirements
+    std::unordered_map<std::string, NvU32> function_shared_mem{};
+    // maps function names to their shared memory requirements
+    std::unordered_map<std::string, NvU64> function_addrs{};
+    // maps function names to their addresses in the uploaded memory
+    std::unordered_map<std::string, NvU32> function_regs{};
+    // maps function names to their register requirements (n registers)
+    std::unordered_map<std::string, NvU32> function_local_mem_reqs{};
+    // maps function names to their local mem requirements
     std::unordered_map<std::string, NvU64> function_sizes{}; // maps function names to their function sizes in bytes
-    std::unordered_map<std::string, std::vector<KernelConstantInfo>> constants{}; // maps function names to their list of constants
-    std::unordered_map<std::string, std::vector<KernelParamInfo>> param_infos{}; // maps function names to function parameter info
+    std::unordered_map<std::string, std::vector<KernelConstantInfo> > constants{};
+    // maps function names to their list of constants
+    std::unordered_map<std::string, std::vector<KernelParamInfo> > param_infos{};
+    // maps function names to function parameter info
     std::unordered_map<std::string, size_t> param_total_sizes{}; // maps function names to their total parameter size
 
     // iterate over sections
     std::vector<RelocInfo> relocs{};
 
     // find symbol table
-    size_t symtab_idx{};
-    {
+    size_t symtab_idx{}; {
         size_t idx = 0;
         for (const auto &s: elf_reader.sections) {
             if (s->get_type() == ELFIO::SHT_SYMTAB) {
@@ -1008,20 +1066,18 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
 
                 size_t num_entries = rel_accessor.get_entries_num();
                 for (ELFIO::Elf_Xword i = 0; i < num_entries; i++) {
-
                     ELFIO::Elf64_Addr offset{};
                     ELFIO::Elf_Word symbol{};
                     uint32_t type{};
                     ELFIO::Elf_Sxword addend{};
 
                     LIBRECUDA_VALIDATE(
-                            rel_accessor.get_entry(i, offset, symbol, type, addend),
-                            LIBRECUDA_ERROR_INVALID_IMAGE
+                        rel_accessor.get_entry(i, offset, symbol, type, addend),
+                        LIBRECUDA_ERROR_INVALID_IMAGE
                     );
 
                     ELFIO::Elf64_Addr sym_section_offs;
-                    ELFIO::Elf64_Addr st_value{};
-                    {
+                    ELFIO::Elf64_Addr st_value{}; {
                         auto sym_tab = elf_reader.sections[symtab_idx];
                         ELFIO::symbol_section_accessor sym_acc{elf_reader, sym_tab};
 
@@ -1033,8 +1089,8 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         uint8_t other{};
 
                         LIBRECUDA_VALIDATE(
-                                sym_acc.get_symbol(symbol, name, st_value, size, bind, st_type, section_index, other),
-                                LIBRECUDA_ERROR_INVALID_IMAGE
+                            sym_acc.get_symbol(symbol, name, st_value, size, bind, st_type, section_index, other),
+                            LIBRECUDA_ERROR_INVALID_IMAGE
                         );
 
                         auto s = elf_reader.sections[section_index];
@@ -1042,9 +1098,9 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     }
 
                     relocs.push_back(RelocInfo{
-                            .apply_image_offset=static_cast<ELFIO::Elf64_Addr>(target_image_off + offset),
-                            .rel_sym_offset=sym_section_offs + st_value,
-                            .typ=type
+                        .apply_image_offset = static_cast<ELFIO::Elf64_Addr>(target_image_off + offset),
+                        .rel_sym_offset = sym_section_offs + st_value,
+                        .typ = type
                     });
                 }
             }
@@ -1079,9 +1135,9 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
             auto &func_constants_list = constants[function_name];
 
             auto const_info = KernelConstantInfo{
-                    .const_nr=constant_nr,
-                    .address=module_gpu_va + section->get_address(),
-                    .size=section->get_size()
+                .const_nr = constant_nr,
+                .address = module_gpu_va + section->get_address(),
+                .size = section->get_size()
             };
             if (constant_nr == 0) {
                 // const0 must be the first in the constant list for sanity purposes.
@@ -1168,8 +1224,8 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         NvU16 param_offset = (attr_data >> 16) & 0xffff;
                         off += (EIATTR_KPARAM_INFO_ATTR_WORD_LEN * sizeof(NvU32));
                         param_infos[target_function_name].push_back(KernelParamInfo{
-                                .param_index=param_idx,
-                                .param_offset=param_offset
+                            .param_index = param_idx,
+                            .param_offset = param_offset
                         });
                         break;
                     }
@@ -1206,11 +1262,6 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                         off += other;
                         break;
                     }
-                    case EIATTR_ANNOTATIONS: {
-                        off += EIATTR_S2RCTAID_INSTR_OFFSETS_ATTR_BASE_WORD_LEN * sizeof(NvU32);
-                        off += other;
-                        break;
-                    }
                     case EIATTR_SW_WAR: {
                         off += EIATTR_SW_WAR_ATTR_WORD_LEN * sizeof(NvU32);
                         break;
@@ -1227,7 +1278,7 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
                     }
                 }
             }
-            parse_attrs_end:;
+        parse_attrs_end:;
         }
     }
 
@@ -1278,19 +1329,19 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
     for (const auto &func_name: function_names) {
         // TODO: validate each of those map lookups and throw invalid image errors
         functions.push_back(LibreCUFunction_{
-                .name=func_name,
-                .func_va_addr=function_addrs[func_name],
-                .shared_mem=function_shared_mem[func_name],
-                .num_registers=function_regs[func_name],
-                .local_mem_req=function_local_mem_reqs[func_name],
-                .function_size=function_sizes[func_name],
-                .constants=constants[func_name],
-                .param_info=param_infos[func_name]
+            .name = func_name,
+            .func_va_addr = function_addrs[func_name],
+            .shared_mem = function_shared_mem[func_name],
+            .num_registers = function_regs[func_name],
+            .local_mem_req = function_local_mem_reqs[func_name],
+            .function_size = function_sizes[func_name],
+            .constants = constants[func_name],
+            .param_info = param_infos[func_name]
         });
     }
     *pModule = new LibreCUmodule_{
-            .functions=functions,
-            .module_va_addr=module_gpu_va
+        .functions = functions,
+        .module_va_addr = module_gpu_va
     };
 
     // apply relocations
@@ -1298,17 +1349,17 @@ libreCudaStatus_t libreCuModuleLoadData(LibreCUmodule *pModule, const void *imag
         LIBRECUDA_VALIDATE(reloc.apply_image_offset < rebuilt_image_size, LIBRECUDA_ERROR_INVALID_IMAGE);
         switch (reloc.typ) {
             case 0x2: {
-                auto *loc_ptr = reinterpret_cast<NvU64 *>((NvU8 *) rebuilt_image + reloc.apply_image_offset);
+                auto *loc_ptr = reinterpret_cast<NvU64 *>(rebuilt_image + reloc.apply_image_offset);
                 *loc_ptr = module_gpu_va + reloc.rel_sym_offset;
                 break;
             }
             case 0x38: {
-                auto *loc_ptr = reinterpret_cast<NvU32 *>((NvU8 *) rebuilt_image + reloc.apply_image_offset + 4);
+                auto *loc_ptr = reinterpret_cast<NvU32 *>(rebuilt_image + reloc.apply_image_offset + 4);
                 *loc_ptr = (module_gpu_va + reloc.rel_sym_offset) & 0xffffffff;
                 break;
             }
             case 0x39: {
-                auto *loc_ptr = reinterpret_cast<NvU32 *>((NvU8 *) rebuilt_image + reloc.apply_image_offset + 4);
+                auto *loc_ptr = reinterpret_cast<NvU32 *>(rebuilt_image + reloc.apply_image_offset + 4);
                 *loc_ptr = ((module_gpu_va + reloc.rel_sym_offset) >> 32);
                 break;
             }
@@ -1369,15 +1420,15 @@ libreCudaStatus_t libreCuLaunchKernel(LibreCUFunction function,
     LIBRECUDA_VALIDATE(function != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(stream != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_ERR_PROPAGATE(
-            stream->command_queue->launchFunction(
-                    function,
-                    gridDimX, gridDimY, gridDimZ,
-                    blockDimX, blockDimY, blockDimZ,
-                    sharedMemBytes,
-                    kernelParams,
-                    numParams,
-                    async
-            )
+        stream->command_queue->launchFunction(
+            function,
+            gridDimX, gridDimY, gridDimZ,
+            blockDimX, blockDimY, blockDimZ,
+            sharedMemBytes,
+            kernelParams,
+            numParams,
+            async
+        )
     );
     LIBRECUDA_SUCCEED();
 }
@@ -1409,7 +1460,7 @@ libreCudaStatus_t libreCuStreamCreate(LibreCUstream *pStreamOut, uint32_t flags)
     LIBRECUDA_ERR_PROPAGATE(command_queue->initializeQueue());
 
     *pStreamOut = new LibreCUstream_{
-            .command_queue=command_queue
+        .command_queue = command_queue
     };
     LIBRECUDA_SUCCEED();
 }
@@ -1462,6 +1513,27 @@ libreCudaStatus_t libreCuDeviceGetAttribute(int *pValOut, LibreCuDeviceAttribute
     LIBRECUDA_ENSURE_CTX_VALID();
 
     switch (attribute) {
+        case CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR:
+        case CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR: {
+            int major{}, minor{}; {
+                const auto [index, data] = device->device_info[NV2080_CTRL_GR_INFO_INDEX_SM_VERSION];
+                uint32_t un_hexed = 0; {
+                    un_hexed += data % 16;
+                    un_hexed += data / 16 % 16 * 10;
+                    un_hexed += data / (16 * 16) % 16 * 100;
+                }
+                LIBRECUDA_VALIDATE(index == NV2080_CTRL_GR_INFO_INDEX_SM_VERSION, LIBRECUDA_ERROR_UNKNOWN);
+                const NvU32 sm_version = un_hexed;
+                major = static_cast<int>(sm_version) / 100;
+                minor = static_cast<int>(sm_version) % 100;
+            }
+            if (major == 0) {
+                LIBRECUDA_FAIL(LIBRECUDA_ERROR_NOT_FOUND);
+            }
+            *pValOut = attribute == CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR ? major : minor;
+            break;
+        }
+
         case CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK: {
             *pValOut = 49152; // we don't support GPUs where this is not the case (lol)
             break;
@@ -1513,10 +1585,10 @@ libreCudaStatus_t libreCuFuncSetAttribute(LibreCUFunction function, LibreCuFunct
         case CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES: {
             int max_smem{};
             LIBRECUDA_ERR_PROPAGATE(
-                    libreCuDeviceGetAttribute(
-                            &max_smem, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN,
-                            current_ctx->device
-                    )
+                libreCuDeviceGetAttribute(
+                    &max_smem, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN,
+                    current_ctx->device
+                )
             );
             if (value > max_smem) {
                 LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
