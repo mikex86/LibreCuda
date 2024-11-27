@@ -32,7 +32,6 @@ int main() {
     libreCuDeviceGetName(name_buffer, 256, device);
     std::cout << "Device Name: " + std::string(name_buffer) << std::endl;
 
-    LibreCUmodule module{};
 
     // read cubin file
     uint8_t *image;
@@ -46,39 +45,28 @@ int main() {
         std::memcpy(image, bytes.data(), bytes.size());
         n_bytes = bytes.size();
     }
-    CUDA_CHECK(libreCuModuleLoadData(&module, image, n_bytes));
 
-    // read functions
-    uint32_t num_funcs{};
-    CUDA_CHECK(libreCuModuleGetFunctionCount(&num_funcs, module));
-    std::cout << "Num functions: " << num_funcs << std::endl;
-
-    auto *functions = new LibreCUFunction[num_funcs];
-    CUDA_CHECK(libreCuModuleEnumerateFunctions(functions, num_funcs, module));
-
-    for (size_t i = 0; i < num_funcs; i++) {
-        LibreCUFunction func = functions[i];
-        const char *func_name{};
-        CUDA_CHECK(libreCuFuncGetName(&func_name, func));
-        std::cout << "  function \"" << func_name << "\"" << std::endl;
+    size_t num_kernels = 1025;
+    LibreCUmodule modules[num_kernels];
+    for (int i = 0; i < num_kernels; i++) {
+        CUDA_CHECK(libreCuModuleLoadData(modules + i, image, n_bytes));
     }
 
-    delete[] functions;
-
-    // find function
-    LibreCUFunction func{};
-    CUDA_CHECK(libreCuModuleGetFunction(&func, module, "emtpy_kernel"));
+    // find functions
+    LibreCUFunction funcs[num_kernels];
+    for (int i = 0; i < num_kernels; i++) {
+        CUDA_CHECK(libreCuModuleGetFunction(funcs + i, modules[i], "emtpy_kernel"));
+    }
 
     // create stream
     LibreCUstream stream{};
     CUDA_CHECK(libreCuStreamCreate(&stream, 0));
 
     void *params[] = {};
-    size_t num_kernels = 1025;
 
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < num_kernels; ++i) {
-        CUDA_CHECK(libreCuLaunchKernel(func,
+        CUDA_CHECK(libreCuLaunchKernel(funcs[i],
                             1, 1, 1,
                             1, 1, 1,
                             0,
@@ -105,7 +93,9 @@ int main() {
     CUDA_CHECK(libreCuStreamDestroy(stream));
 
     // unload module
-    CUDA_CHECK(libreCuModuleUnload(module));
+    for (int i = 0; i < num_kernels; ++i) {
+        CUDA_CHECK(libreCuModuleUnload(modules[i]));
+    }
 
     // destroy ctx
     CUDA_CHECK(libreCuCtxDestroy(ctx));
