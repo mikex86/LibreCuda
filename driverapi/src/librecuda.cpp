@@ -1389,7 +1389,8 @@ libreCudaStatus_t
 libreCuModuleEnumerateFunctions(LibreCUFunction *functions, uint32_t numFunctions, LibreCUmodule mod) {
     LIBRECUDA_VALIDATE(functions != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
     LIBRECUDA_VALIDATE(mod != nullptr, LIBRECUDA_ERROR_INVALID_VALUE);
-    for (uint32_t i = 0; i < numFunctions; i++) {
+    LIBRECUDA_VALIDATE(numFunctions >= mod->functions.size(), LIBRECUDA_ERROR_INVALID_VALUE);
+    for (uint32_t i = 0; i < mod->functions.size(); i++) {
         functions[i] = &mod->functions[i];
     }
     LIBRECUDA_SUCCEED();
