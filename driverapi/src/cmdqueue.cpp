@@ -241,7 +241,7 @@ libreCudaStatus_t NvCommandQueue::releaseSignal(NvSignal *signal) {
     NvU32 signalIdx = signal - signalPool;
 
     // ensure pointer was within signal pool and thus valid
-    if (signalIdx > MAX_SIGNAL_POOL_SIZE) {
+    if (signalIdx >= MAX_SIGNAL_POOL_SIZE) {
         LIBRECUDA_FAIL(LIBRECUDA_ERROR_INVALID_VALUE);
     }
 
