@@ -31,7 +31,7 @@ libreCudaStatus_t loadMemcpyKernelsIfNeeded(const LibreCUdevice device) {
     LIBRECUDA_ERR_PROPAGATE(
         libreCuDeviceGetAttribute(&compute_capability_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
 
-    int compute_capability = compute_capability_major * 10 | compute_capability_minor;
+    int compute_capability = compute_capability_major * 10 + compute_capability_minor;
 
     const uint8_t *cubin_data;
     size_t cubin_size{};
