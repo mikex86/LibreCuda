@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(LibreCuda CXX)
 
-option(BUILD_LIBRECUDA_DRVIER_API_STATIC_LIB "Build the LibreCUDA driverapi as a static library" ON)
+option(BUILD_LIBRECUDA_DRIVER_API_STATIC_LIB "Build the LibreCUDA driverapi as a static library" ON)
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
 if (COMPILER_SUPPORTS_CXX17)
