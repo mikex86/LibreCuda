@@ -7,7 +7,7 @@ set(
         internal/memcopy.h
         internal/memcopy_kernels.h
 )
-if (BUILD_LIBRECUDA_DRVIER_API_STATIC_LIB)
+if (BUILD_LIBRECUDA_DRIVER_API_STATIC_LIB)
     add_library(driverapi STATIC ${DRIVERAPI_SOURCES})
 else()
     add_library(driverapi SHARED ${DRIVERAPI_SOURCES})
