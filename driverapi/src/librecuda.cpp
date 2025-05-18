@@ -737,7 +737,9 @@ libreCudaStatus_t libreCuMemAlloc(void **pDevicePointer, size_t bytesize, bool m
     LIBRECUDA_ENSURE_CTX_VALID();
     NvU64 va_address{}; {
         bool hugePages = bytesize > (16 << 20);
-        gpuAlloc(current_ctx, bytesize, false, hugePages, mapToCpu, 0, &va_address);
+        LIBRECUDA_ERR_PROPAGATE(
+            gpuAlloc(current_ctx, bytesize, false, hugePages, mapToCpu, 0, &va_address)
+        );
     }
     *pDevicePointer = reinterpret_cast<void *>(va_address);
     LIBRECUDA_SUCCEED();
