@@ -101,6 +101,8 @@ libreCudaStatus_t libreCuInit(int flags) {
     // initialize mm
     {
         int fd_uvm_2 = open("/dev/nvidia-uvm", O_RDWR | O_CLOEXEC);
+        LIBRECUDA_VALIDATE(fd_uvm_2 != -1, LIBRECUDA_ERROR_INVALID_DEVICE);
+        
         UVM_MM_INITIALIZE_PARAMS params{
             .uvmFd = fd_uvm
         };
@@ -119,9 +121,11 @@ libreCudaStatus_t libreCuInit(int flags) {
             } else {
                 LIBRECUDA_DEBUG("UVM_MM_INITIALIZE failed with return code " + std::to_string(ret) + " and status " +
                     std::to_string(status));
+                close(fd_uvm_2);
                 LIBRECUDA_FAIL(LIBRECUDA_ERROR_UNKNOWN);
             }
         } else {
+            close(fd_uvm_2);
             driver_type = OPEN_KERNEL_MODULES;
         }
     }
