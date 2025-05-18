@@ -346,7 +346,7 @@ memMapToCpu(LibreCUcontext ctx, NvHandle memoryHandle, size_t size, NvU64 &targe
     int device_fd;
     if (isSystemAlloc) {
         device_fd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
-        LIBRECUDA_VALIDATE(fd_ctl != -1, LIBRECUDA_ERROR_INVALID_DEVICE);
+        LIBRECUDA_VALIDATE(device_fd != -1, LIBRECUDA_ERROR_INVALID_DEVICE);
     } else {
         std::string device_file = getDeviceFile(ctx->device);
 
