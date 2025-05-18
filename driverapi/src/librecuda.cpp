@@ -760,9 +760,9 @@ libreCudaStatus_t gpuFree(LibreCUcontext ctx, NvU64 virtualAddress) {
     va_to_mem_handle.erase(virtualAddress);
     // iterate in reverse order to exploit the fact that we use a bump allocator
     // and the insertion position is indicative of the address magnitude
-    for (auto it = hostMappedPtrs.end(); it >= hostMappedPtrs.begin(); --it) {
+    for (auto it = hostMappedPtrs.rbegin(); it != hostMappedPtrs.rend(); ++it) {
         if (virtualAddress < it->second && virtualAddress >= it->first) {
-            hostMappedPtrs.erase(it);
+            hostMappedPtrs.erase(std::next(it).base());
             break;
         }
     }
@@ -841,7 +841,7 @@ bool isHostMappedPtr(void *ptr) {
 
     // iterate in reverse order to exploit the fact that we use a bump allocator
     // and the insertion position is indicative of the address magnitude
-    for (auto it = hostMappedPtrs.end(); it >= hostMappedPtrs.begin(); --it) {
+    for (auto it = hostMappedPtrs.rbegin(); it != hostMappedPtrs.rend(); ++it) {
         if (va < it->second && va >= it->first) {
             return true;
         }
